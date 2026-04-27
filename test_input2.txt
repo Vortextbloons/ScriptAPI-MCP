@@ -1,4 +1,0 @@
-{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"0.1.0","capabilities":{},"clientInfo":{"name":"test-client","version":"1.0.0"}}}
-{"jsonrpc":"2.0","method":"notifications/initialized"}
-{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"search_api_types","arguments":{"module":"@minecraft/server","query":"Player","version":"2.6.0"}}}
-{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"sync_manifest_dependencies","arguments":{"current_manifest_json":"{\"format_version\":2,\"header\":{\"name\":\"Test Pack\",\"description\":\"Test\",\"uuid\":\"12345678-1234-1234-1234-123456789abc\",\"version\":[1,0,0],\"min_engine_version\":[1,21,60]},\"modules\":[{\"type\":\"data\",\"uuid\":\"87654321-4321-4321-4321-cba987654321\",\"version\":[1,0,0]}],\"dependencies\":[{\"module_name\":\"@minecraft/server\",\"version\":\"2.6.0\"}]}","added_modules":["@minecraft/server-ui"]}}}

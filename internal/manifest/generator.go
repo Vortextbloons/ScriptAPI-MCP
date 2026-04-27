@@ -4,8 +4,11 @@ import (
 	"crypto/rand"
 	"encoding/json"
 	"fmt"
+	"sort"
+	"strings"
 
 	"github.com/isaac-org/Script-API-Helper-MCP/internal/models"
+	"github.com/isaac-org/Script-API-Helper-MCP/internal/npm"
 )
 
 // GenerateUUID creates a new v4 UUID string
@@ -24,6 +27,14 @@ func GenerateUUID() string {
 
 // GenerateBP creates a Behavior Pack manifest
 func GenerateBP(name, description string, deps []models.Dependency, bpUUID string) models.Manifest {
+	sortedDeps := append([]models.Dependency(nil), deps...)
+	sort.Slice(sortedDeps, func(i, j int) bool {
+		if sortedDeps[i].ModuleName == sortedDeps[j].ModuleName {
+			return sortedDeps[i].Version < sortedDeps[j].Version
+		}
+		return sortedDeps[i].ModuleName < sortedDeps[j].ModuleName
+	})
+
 	return models.Manifest{
 		FormatVersion: 2,
 		Header: models.ManifestHeader{
@@ -47,7 +58,7 @@ func GenerateBP(name, description string, deps []models.Dependency, bpUUID strin
 				Entry:    "scripts/main.js",
 			},
 		},
-		Dependencies: deps,
+		Dependencies: sortedDeps,
 	}
 }
 
@@ -85,14 +96,25 @@ console.warn("Script loaded for version %s");
 `, version)
 
 	if lang == "typescript" {
-		files["scripts/main.ts"] = jsCode + `
+		files["src/main.ts"] = jsCode + `
 // TypeScript entry point
 `
 		files["tsconfig.json"] = generateTSConfig()
 	} else {
-		files["scripts/main.js"] = jsCode
+		files["src/main.js"] = jsCode
 	}
-	return files
+
+	// Keep output order predictable for callers that iterate over the map keys.
+	ordered := make(map[string]string, len(files))
+	keys := make([]string, 0, len(files))
+	for k := range files {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		ordered[k] = files[k]
+	}
+	return ordered
 }
 
 func generateTSConfig() string {
@@ -114,6 +136,52 @@ func generateTSConfig() string {
 	return string(b)
 }
 
+// GeneratePackageJSON creates a package.json with esbuild build scripts and resolved dependencies
+func GeneratePackageJSON(addonName string, deps []models.Dependency, lang string) string {
+	depMap := make(map[string]string)
+	var externalFlags []string
+	for _, dep := range deps {
+		if dep.ModuleName != "" {
+			npmVer := dep.Version
+			if !strings.HasPrefix(npmVer, "^") && !strings.HasPrefix(npmVer, "~") {
+				npmVer = "^" + npmVer
+			}
+			depMap[dep.ModuleName] = npmVer
+			externalFlags = append(externalFlags, "--external:"+dep.ModuleName)
+		}
+	}
+
+	scripts := make(map[string]string)
+	devDeps := make(map[string]string)
+
+	if lang == "typescript" {
+		externalStr := strings.Join(externalFlags, " ")
+		scripts["build"] = fmt.Sprintf("esbuild src/main.ts --bundle --format=esm --target=es2020 --outfile=behavior_pack/scripts/main.js %s && node scripts/deploy.js", externalStr)
+		scripts["typecheck"] = "tsc --noEmit"
+		devDeps["esbuild"] = "^0.25.9"
+		devDeps["typescript"] = "^5.9.2"
+	} else {
+		scripts["build"] = "node scripts/deploy.js"
+		devDeps["esbuild"] = "^0.25.9"
+	}
+
+	pkg := map[string]interface{}{
+		"name":    strings.ToLower(addonName),
+		"private": true,
+		"scripts": scripts,
+	}
+
+	if len(devDeps) > 0 {
+		pkg["devDependencies"] = devDeps
+	}
+	if len(depMap) > 0 {
+		pkg["dependencies"] = depMap
+	}
+
+	b, _ := json.MarshalIndent(pkg, "", "  ")
+	return string(b) + "\n"
+}
+
 // BuildDependencies creates the dependency list for a BP manifest
 func BuildDependencies(serverVersion string, needsUI bool) []models.Dependency {
 	deps := []models.Dependency{
@@ -123,6 +191,72 @@ func BuildDependencies(serverVersion string, needsUI bool) []models.Dependency {
 		deps = append(deps, models.Dependency{ModuleName: "@minecraft/server-ui", Version: serverVersion})
 	}
 	return deps
+}
+
+// BuildDependenciesWithChannel creates the dependency list for a BP manifest by resolving versions from actual npm data.
+// modules is a list of module names (e.g., ["@minecraft/server", "@minecraft/server-ui"])
+// minecraftVersion is the Minecraft version (e.g., "1.21.60" or "latest")
+// channel is "stable" or "beta"
+func BuildDependenciesWithChannel(npmClient *npm.Client, modules []string, minecraftVersion string, channel string) ([]models.Dependency, error) {
+	if len(modules) == 0 {
+		// Default to server module
+		modules = []string{"@minecraft/server"}
+	}
+
+	if channel == "" {
+		channel = "beta"
+	}
+
+	// Fetch version matrices for all modules
+	versionMatrices := make(map[string]*npm.VersionMatrix)
+	for _, mod := range modules {
+		vm, err := npmClient.FetchVersionMatrix(mod)
+		if err != nil {
+			return nil, fmt.Errorf("failed to fetch versions for %s: %w", mod, err)
+		}
+		versionMatrices[mod] = vm
+	}
+
+	// Resolve versions for each module
+	resolvedVersions, err := npm.ResolveModuleVersions(versionMatrices, minecraftVersion, channel)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve versions: %w", err)
+	}
+
+	// Build dependency list
+	deps := make([]models.Dependency, 0, len(resolvedVersions))
+	for _, mod := range modules {
+		if ver, ok := resolvedVersions[mod]; ok {
+			deps = append(deps, models.Dependency{
+				ModuleName: mod,
+				Version:    ver,
+			})
+		}
+	}
+
+	return deps, nil
+}
+
+// BuildDependenciesWithValidation resolves versions and validates against installed node_modules
+func BuildDependenciesWithValidation(projectPath string, npmClient *npm.Client, modules []string, minecraftVersion string, channel string) ([]models.Dependency, []string, error) {
+	deps, err := BuildDependenciesWithChannel(npmClient, modules, minecraftVersion, channel)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// Build version map for validation
+	manifestVersions := make(map[string]string)
+	for _, dep := range deps {
+		manifestVersions[dep.ModuleName] = dep.Version
+	}
+
+	// Validate against installed modules
+	warnings, err := npm.ValidateInstalledModules(projectPath, manifestVersions)
+	if err != nil {
+		return deps, warnings, err
+	}
+
+	return deps, warnings, nil
 }
 
 // UpdateDependencies modifies a manifest's dependency list
@@ -177,22 +311,36 @@ func ParseManifest(s string) (models.Manifest, error) {
 }
 
 // FileStructure returns the recommended folder layout
-func FileStructure(addonName string, needsRP bool, lang string) []string {
+func FileStructure(addonName string, needsRP bool, lang string, createDeploy bool) []string {
+	ext := "js"
+	if lang == "typescript" {
+		ext = "ts"
+	}
 	base := []string{
-		addonName + "/",
-		addonName + "/behavior_pack/",
-		addonName + "/behavior_pack/manifest.json",
-		addonName + "/behavior_pack/scripts/",
-		addonName + "/behavior_pack/scripts/main." + lang,
+		"behavior_pack/",
+		"behavior_pack/manifest.json",
+		"behavior_pack/pack_icon.png",
+		"behavior_pack/scripts/",
+		"src/",
+		"src/main." + ext,
 	}
 	if needsRP {
 		base = append(base,
-			addonName+"/resource_pack/",
-			addonName+"/resource_pack/manifest.json",
+			"resource_pack/",
+			"resource_pack/manifest.json",
+			"resource_pack/pack_icon.png",
 		)
 	}
 	if lang == "typescript" {
-		base = append(base, addonName+"/behavior_pack/tsconfig.json")
+		base = append(base, "tsconfig.json")
 	}
+	if createDeploy {
+		base = append(base,
+			"package.json",
+			"scripts/",
+			"scripts/deploy.js",
+		)
+	}
+	sort.Strings(base)
 	return base
 }

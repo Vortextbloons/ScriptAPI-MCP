@@ -12,7 +12,7 @@ type CacheEntry struct {
 }
 
 // Cache is a simple in-memory cache with TTL
- type Cache struct {
+type Cache struct {
 	mu    sync.RWMutex
 	store map[string]CacheEntry
 }
@@ -48,5 +48,19 @@ func (c *Cache) Set(key string, data []byte, ttl time.Duration) {
 		Data:      data,
 		ExpiresAt: time.Now().Add(ttl),
 	}
+	c.mu.Unlock()
+}
+
+// Clear removes all entries from the cache
+func (c *Cache) Clear() {
+	c.mu.Lock()
+	c.store = make(map[string]CacheEntry)
+	c.mu.Unlock()
+}
+
+// Delete removes a specific key from the cache
+func (c *Cache) Delete(key string) {
+	c.mu.Lock()
+	delete(c.store, key)
 	c.mu.Unlock()
 }

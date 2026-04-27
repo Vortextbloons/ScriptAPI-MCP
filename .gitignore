@@ -1,0 +1,29 @@
+# Binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Go build output
+main
+
+# Test binary, built with `go test -c`
+*.test
+
+# Output of the go coverage tool
+*.out
+
+# Input/scratch files
+*.txt
+input_*.txt
+test_*.txt
+stderr.txt
+stdout.txt
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~

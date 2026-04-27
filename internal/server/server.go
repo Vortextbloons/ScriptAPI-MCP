@@ -9,14 +9,15 @@ import (
 	"github.com/isaac-org/Script-API-Helper-MCP/internal/npm"
 	"github.com/isaac-org/Script-API-Helper-MCP/internal/resources"
 	"github.com/isaac-org/Script-API-Helper-MCP/internal/tools"
+	"github.com/isaac-org/Script-API-Helper-MCP/internal/version"
 )
 
 // New creates and configures the MCP server with all tools and resources
 func New() (*mcp.Server, error) {
 	transport := stdio.NewStdioServerTransport()
 	server := mcp.NewServer(transport,
-		mcp.WithName("Script-API-Helper-MCP"),
-		mcp.WithVersion("1.0.0"),
+		mcp.WithName(version.Name),
+		mcp.WithVersion(version.Current),
 	)
 
 	// Initialize npm client
@@ -34,6 +35,9 @@ func New() (*mcp.Server, error) {
 	}
 	if err := tools.RegisterSyncManifestDependencies(server); err != nil {
 		return nil, fmt.Errorf("failed to register sync_manifest_dependencies: %w", err)
+	}
+	if err := tools.RegisterVersionInfo(server); err != nil {
+		return nil, fmt.Errorf("failed to register get_mcp_version: %w", err)
 	}
 	if err := tools.RegisterScaffoldAddon(server); err != nil {
 		return nil, fmt.Errorf("failed to register scaffold_addon: %w", err)

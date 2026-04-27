@@ -7,14 +7,15 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 )
 
 const (
 	registryURL = "https://registry.npmjs.org"
-	versionTTL  = 2 * time.Minute
-	dtsTTL      = 5 * time.Minute
+	versionTTL  = 30 * time.Second
+	dtsTTL      = 2 * time.Minute
 )
 
 // Client is an HTTP client for the npm registry with caching
@@ -70,6 +71,7 @@ func (c *Client) FetchVersionMatrix(module string) (*VersionMatrix, error) {
 	for v := range payload.Versions {
 		vm.Versions = append(vm.Versions, v)
 	}
+	sort.Strings(vm.Versions)
 
 	data, _ := json.Marshal(vm)
 	c.cache.Set(cacheKey, data, versionTTL)
@@ -119,6 +121,16 @@ func (c *Client) FetchTypes(module, version string) ([]byte, error) {
 
 	c.cache.Set(cacheKey, dts, dtsTTL)
 	return dts, nil
+}
+
+// ClearCache clears all cached data to force fresh fetches
+func (c *Client) ClearCache() {
+	c.cache.Clear()
+}
+
+// ClearVersionCache clears cached version data for a specific module
+func (c *Client) ClearVersionCache(module string) {
+	c.cache.Delete("versions:" + module)
 }
 
 func extractDTS(r io.Reader) ([]byte, error) {

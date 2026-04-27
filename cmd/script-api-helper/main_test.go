@@ -14,6 +14,7 @@ import (
 	"github.com/isaac-org/Script-API-Helper-MCP/internal/npm"
 	"github.com/isaac-org/Script-API-Helper-MCP/internal/resources"
 	"github.com/isaac-org/Script-API-Helper-MCP/internal/tools"
+	"github.com/isaac-org/Script-API-Helper-MCP/internal/version"
 )
 
 func TestToolCalls(t *testing.T) {
@@ -28,8 +29,8 @@ func TestToolCalls(t *testing.T) {
 
 	transport := stdio.NewStdioServerTransportWithIO(inReader, outWriter)
 	server := mcp.NewServer(transport,
-		mcp.WithName("Script-API-Helper-MCP"),
-		mcp.WithVersion("1.0.0"),
+		mcp.WithName(version.Name),
+		mcp.WithVersion(version.Current),
 	)
 
 	npmClient := npm.NewClient()
@@ -44,6 +45,9 @@ func TestToolCalls(t *testing.T) {
 	}
 	if err := tools.RegisterSyncManifestDependencies(server); err != nil {
 		t.Fatalf("failed to register tool 4: %v", err)
+	}
+	if err := tools.RegisterVersionInfo(server); err != nil {
+		t.Fatalf("failed to register version tool: %v", err)
 	}
 	if err := server.RegisterResource("bedrock://docs/strict_rules",
 		"Bedrock Script API Strict Rules",
@@ -118,6 +122,13 @@ func TestToolCalls(t *testing.T) {
 	fmt.Println("Tool 1 response:", resp1)
 	if !strings.Contains(resp1, "WARNING") {
 		t.Error("resolve_api_environment should include guardrails")
+	}
+
+	// Test version reporting tool
+	send(`{"jsonrpc":"2.0","id":40,"method":"tools/call","params":{"name":"get_mcp_version","arguments":{}}}`)
+	respVersion := readResponse()
+	if !strings.Contains(respVersion, version.Current) {
+		t.Error("get_mcp_version should return the current version")
 	}
 
 	fmt.Println("All tool call tests passed!")

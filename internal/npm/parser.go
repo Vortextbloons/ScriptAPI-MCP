@@ -7,6 +7,228 @@ import (
 	"strings"
 )
 
+// ResolveModuleVersions resolves versions for multiple modules given a Minecraft version and channel.
+// channel should be "stable", "beta", or "preview" (defaults to "beta" if empty).
+func ResolveModuleVersions(clients map[string]*VersionMatrix, minecraftVersion string, channel string) (map[string]string, error) {
+	if channel == "" {
+		channel = "beta"
+	}
+
+	resolved := make(map[string]string)
+
+	for module, vm := range clients {
+		ver, err := ResolveVersionForChannel(vm, minecraftVersion, channel)
+		if err != nil {
+			return nil, fmt.Errorf("failed to resolve version for %s: %w", module, err)
+		}
+		resolved[module] = ver
+	}
+
+	return resolved, nil
+}
+
+// NormalizeVersion converts a full npm version to the short form used in manifest.json.
+// e.g., "2.7.0-beta.1.26.14-stable" -> "2.7.0-beta"
+// e.g., "2.6.0-stable" -> "2.6.0"
+func NormalizeVersion(version string) string {
+	// Split on "-" to get base version and pre-release parts
+	parts := strings.SplitN(version, "-", 2)
+	base := parts[0]
+
+	if len(parts) < 2 {
+		return base
+	}
+
+	prerelease := parts[1]
+	// Check if it's a beta version (contains "beta" in prerelease)
+	if strings.Contains(prerelease, "beta") {
+		return base + "-beta"
+	}
+
+	// For stable/other versions, just return the base
+	return base
+}
+
+// ResolveVersionForChannel resolves a Minecraft version to an npm version for a specific channel.
+// Channels: "stable" (no beta/preview/rc), "beta" (has -beta but NOT -preview), "preview" (has -preview).
+func ResolveVersionForChannel(vm *VersionMatrix, minecraftVersion string, channel string) (string, error) {
+	if channel == "" {
+		channel = "beta"
+	}
+
+	if minecraftVersion == "latest" {
+		switch channel {
+		case "stable":
+			return resolveLatestStable(vm)
+		case "beta":
+			return resolveLatestBeta(vm)
+		case "preview":
+			return resolveLatestPreview(vm)
+		default:
+			return resolveLatestBeta(vm)
+		}
+	}
+
+	// Clean input: remove leading "v" if present
+	mcVer := strings.TrimPrefix(minecraftVersion, "v")
+
+	// Filter versions that match the minecraft version and channel
+	candidates := make([]string, 0)
+	for _, v := range vm.Versions {
+		if !strings.Contains(v, mcVer) {
+			continue
+		}
+		if matchesChannel(v, channel) {
+			candidates = append(candidates, v)
+		}
+	}
+
+	// If no candidates found for the specific channel, try all matching versions
+	if len(candidates) == 0 {
+		for _, v := range vm.Versions {
+			if strings.Contains(v, mcVer) {
+				candidates = append(candidates, v)
+			}
+		}
+	}
+
+	if len(candidates) == 0 {
+		return "", fmt.Errorf("no npm version found matching Minecraft version %s for channel %s", minecraftVersion, channel)
+	}
+
+	// Sort candidates: highest version first
+	sort.Slice(candidates, func(i, j int) bool {
+		return compareSemver(candidates[i], candidates[j]) > 0
+	})
+
+	return NormalizeVersion(candidates[0]), nil
+}
+
+// matchesChannel checks if a version string matches the given channel
+func matchesChannel(version string, channel string) bool {
+	switch channel {
+	case "stable":
+		// Stable: no beta, no preview, no rc
+		return !strings.Contains(version, "-beta") &&
+			!strings.Contains(version, "-preview") &&
+			!strings.Contains(version, "-rc")
+	case "beta":
+		// Beta: has -beta but NOT -preview
+		return strings.Contains(version, "-beta") && !strings.Contains(version, "-preview")
+	case "preview":
+		// Preview: has -preview (could be beta+preview or rc+preview)
+		return strings.Contains(version, "-preview")
+	default:
+		return true
+	}
+}
+
+// resolveLatestStable finds the highest stable version
+func resolveLatestStable(vm *VersionMatrix) (string, error) {
+	stableCandidates := make([]string, 0)
+	for _, v := range vm.Versions {
+		if !strings.Contains(v, "-beta") && !strings.Contains(v, "-preview") && !strings.Contains(v, "-rc") {
+			stableCandidates = append(stableCandidates, v)
+		}
+	}
+	if len(stableCandidates) == 0 {
+		return "", fmt.Errorf("no stable version found for module %s", vm.Module)
+	}
+	sort.Slice(stableCandidates, func(i, j int) bool {
+		return compareSemver(stableCandidates[i], stableCandidates[j]) > 0
+	})
+	return NormalizeVersion(stableCandidates[0]), nil
+}
+
+// resolveLatestBeta finds the highest beta version (has -beta but NOT -preview)
+func resolveLatestBeta(vm *VersionMatrix) (string, error) {
+	betaCandidates := make([]string, 0)
+	for _, v := range vm.Versions {
+		if strings.Contains(v, "-beta") && !strings.Contains(v, "-preview") {
+			betaCandidates = append(betaCandidates, v)
+		}
+	}
+	if len(betaCandidates) > 0 {
+		sort.Slice(betaCandidates, func(i, j int) bool {
+			return compareSemver(betaCandidates[i], betaCandidates[j]) > 0
+		})
+		return NormalizeVersion(betaCandidates[0]), nil
+	}
+	// Fallback to latest tag if no pure beta
+	if latest, ok := vm.Tags["latest"]; ok {
+		return NormalizeVersion(latest), nil
+	}
+	return "", fmt.Errorf("no beta version found for module %s", vm.Module)
+}
+
+// resolveLatestPreview finds the highest preview version (has -preview)
+func resolveLatestPreview(vm *VersionMatrix) (string, error) {
+	previewCandidates := make([]string, 0)
+	for _, v := range vm.Versions {
+		if strings.Contains(v, "-preview") {
+			previewCandidates = append(previewCandidates, v)
+		}
+	}
+	if len(previewCandidates) > 0 {
+		sort.Slice(previewCandidates, func(i, j int) bool {
+			return compareSemver(previewCandidates[i], previewCandidates[j]) > 0
+		})
+		return NormalizeVersion(previewCandidates[0]), nil
+	}
+	// Fallback to beta tag if no preview
+	if beta, ok := vm.Tags["beta"]; ok {
+		return NormalizeVersion(beta), nil
+	}
+	return "", fmt.Errorf("no preview version found for module %s", vm.Module)
+}
+
+// compareSemver compares two version strings. Returns 1 if a > b, -1 if a < b, 0 if equal.
+func compareSemver(a, b string) int {
+	// Strip any pre-release suffixes for base comparison
+	baseA := strings.Split(a, "-")[0]
+	baseB := strings.Split(b, "-")[0]
+
+	partsA := strings.Split(baseA, ".")
+	partsB := strings.Split(baseB, ".")
+
+	for i := 0; i < len(partsA) && i < len(partsB); i++ {
+		// Simple integer comparison of version parts
+		var numA, numB int
+		fmt.Sscanf(partsA[i], "%d", &numA)
+		fmt.Sscanf(partsB[i], "%d", &numB)
+		if numA > numB {
+			return 1
+		}
+		if numA < numB {
+			return -1
+		}
+	}
+
+	// If base versions are equal, prefer versions with more parts (more specific)
+	if len(partsA) != len(partsB) {
+		return len(partsA) - len(partsB)
+	}
+
+	// If still equal, prefer stable over pre-release
+	aHasPre := strings.Contains(a, "-")
+	bHasPre := strings.Contains(b, "-")
+	if !aHasPre && bHasPre {
+		return 1
+	}
+	if aHasPre && !bHasPre {
+		return -1
+	}
+
+	// Lexicographic comparison of full version string as fallback
+	if a > b {
+		return 1
+	}
+	if a < b {
+		return -1
+	}
+	return 0
+}
+
 // ResolveVersion maps a Minecraft version string to the best matching npm version.
 // Supports "latest" tag.
 func ResolveVersion(vm *VersionMatrix, minecraftVersion string) (string, error) {
@@ -42,8 +264,8 @@ func ResolveVersion(vm *VersionMatrix, minecraftVersion string) (string, error) 
 		if iStable != jStable {
 			return iStable
 		}
-		// Simple string compare works for same-prefix semver
-		return vi > vj
+		// Use proper semver comparison
+		return compareSemver(vi, vj) > 0
 	})
 
 	return candidates[0], nil
