@@ -69,3 +69,11 @@ var DeprecatedModules = []string{
 	"mojang-minecraft-server-admin",
 	"mojang-gametest",
 }
+
+// VersionResolutionResult holds the outcome of attempting to resolve a version string.
+type VersionResolutionResult struct {
+	Requested  string   `json:"requested"`
+	Resolved   string   `json:"resolved"`
+	Candidates []string `json:"candidates,omitempty"`
+	Error      string   `json:"error,omitempty"`
+}

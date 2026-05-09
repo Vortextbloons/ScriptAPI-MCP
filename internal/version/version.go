@@ -1,4 +1,4 @@
 package version
 
-const Current = "1.5.3"
+const Current = "1.6.0"
 const Name = "Script-API-Helper-MCP"

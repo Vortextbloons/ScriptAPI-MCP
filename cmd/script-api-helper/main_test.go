@@ -8,12 +8,9 @@ import (
 	"testing"
 	"time"
 
-	mcp "github.com/metoro-io/mcp-golang"
 	"github.com/metoro-io/mcp-golang/transport/stdio"
 
-	"github.com/isaac-org/Script-API-Helper-MCP/internal/npm"
-	"github.com/isaac-org/Script-API-Helper-MCP/internal/resources"
-	"github.com/isaac-org/Script-API-Helper-MCP/internal/tools"
+	"github.com/isaac-org/Script-API-Helper-MCP/internal/server"
 	"github.com/isaac-org/Script-API-Helper-MCP/internal/version"
 )
 
@@ -28,41 +25,13 @@ func TestToolCalls(t *testing.T) {
 	}
 
 	transport := stdio.NewStdioServerTransportWithIO(inReader, outWriter)
-	server := mcp.NewServer(transport,
-		mcp.WithName(version.Name),
-		mcp.WithVersion(version.Current),
-	)
-
-	npmClient := npm.NewClient()
-	if err := tools.RegisterResolveAPIEnvironment(server, npmClient); err != nil {
-		t.Fatalf("failed to register tool 1: %v", err)
-	}
-	if err := tools.RegisterInitAddonWorkspace(server); err != nil {
-		t.Fatalf("failed to register tool 2: %v", err)
-	}
-	if err := tools.RegisterSearchAPITypes(server, npmClient); err != nil {
-		t.Fatalf("failed to register tool 3: %v", err)
-	}
-	if err := tools.RegisterSyncManifestDependencies(server); err != nil {
-		t.Fatalf("failed to register tool 4: %v", err)
-	}
-	if err := tools.RegisterVersionInfo(server); err != nil {
-		t.Fatalf("failed to register version tool: %v", err)
-	}
-	if err := server.RegisterResource("bedrock://docs/strict_rules",
-		"Bedrock Script API Strict Rules",
-		"Bedrock Script API guardrails and syntax cheat sheet",
-		"text/markdown",
-		func() (*mcp.ResourceResponse, error) {
-			return mcp.NewResourceResponse(
-				mcp.NewTextEmbeddedResource("bedrock://docs/strict_rules", resources.StrictRules(), "text/markdown"),
-			), nil
-		}); err != nil {
-		t.Fatalf("failed to register resource: %v", err)
+	srv, err := server.NewWithTransport(transport)
+	if err != nil {
+		t.Fatalf("failed to create server: %v", err)
 	}
 
 	go func() {
-		if err := server.Serve(); err != nil {
+		if err := srv.Serve(); err != nil {
 			t.Errorf("server serve error: %v", err)
 		}
 	}()
