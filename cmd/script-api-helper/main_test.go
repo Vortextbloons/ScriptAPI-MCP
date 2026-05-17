@@ -3,14 +3,15 @@ package main
 import (
 	"bufio"
 	"fmt"
+	"io"
 	"os"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/metoro-io/mcp-golang/transport/stdio"
-
 	"github.com/isaac-org/Script-API-Helper-MCP/internal/server"
+	mcpstdio "github.com/isaac-org/Script-API-Helper-MCP/internal/transport"
 	"github.com/isaac-org/Script-API-Helper-MCP/internal/version"
 )
 
@@ -24,7 +25,7 @@ func TestToolCalls(t *testing.T) {
 		t.Fatalf("failed to create output pipe: %v", err)
 	}
 
-	transport := stdio.NewStdioServerTransportWithIO(inReader, outWriter)
+	transport := mcpstdio.NewStdioServerTransportWithIO(inReader, outWriter)
 	srv, err := server.NewWithTransport(transport)
 	if err != nil {
 		t.Fatalf("failed to create server: %v", err)
@@ -42,12 +43,43 @@ func TestToolCalls(t *testing.T) {
 		inWriter.WriteString(msg + "\n")
 	}
 
+	reader := bufio.NewReader(outReader)
 	readResponse := func() string {
-		scanner := bufio.NewScanner(outReader)
-		if scanner.Scan() {
-			return scanner.Text()
+		b, err := reader.Peek(1)
+		if err != nil {
+			return ""
 		}
-		return ""
+		if b[0] == '{' {
+			line, err := reader.ReadString('\n')
+			if err != nil {
+				return ""
+			}
+			return strings.TrimSpace(line)
+		}
+
+		contentLength := 0
+		for {
+			line, err := reader.ReadString('\n')
+			if err != nil {
+				return ""
+			}
+			line = strings.TrimRight(line, "\r\n")
+			if line == "" {
+				break
+			}
+			name, value, ok := strings.Cut(line, ":")
+			if ok && strings.EqualFold(strings.TrimSpace(name), "Content-Length") {
+				contentLength, _ = strconv.Atoi(strings.TrimSpace(value))
+			}
+		}
+		if contentLength == 0 {
+			return ""
+		}
+		data := make([]byte, contentLength)
+		if _, err := io.ReadFull(reader, data); err != nil {
+			return ""
+		}
+		return string(data)
 	}
 
 	// Initialize

@@ -5,17 +5,17 @@ import (
 
 	mcp "github.com/metoro-io/mcp-golang"
 	"github.com/metoro-io/mcp-golang/transport"
-	"github.com/metoro-io/mcp-golang/transport/stdio"
 
 	"github.com/isaac-org/Script-API-Helper-MCP/internal/npm"
 	"github.com/isaac-org/Script-API-Helper-MCP/internal/resources"
 	"github.com/isaac-org/Script-API-Helper-MCP/internal/tools"
+	mcpstdio "github.com/isaac-org/Script-API-Helper-MCP/internal/transport"
 	"github.com/isaac-org/Script-API-Helper-MCP/internal/version"
 )
 
 // New creates and configures the MCP server with all tools and resources using stdio transport.
 func New() (*mcp.Server, error) {
-	return NewWithTransport(stdio.NewStdioServerTransport())
+	return NewWithTransport(mcpstdio.NewStdioServerTransport())
 }
 
 // NewWithTransport creates and configures the MCP server with a custom transport.
