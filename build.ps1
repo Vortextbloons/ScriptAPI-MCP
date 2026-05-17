@@ -1,0 +1,1 @@
+go build -o script-api-helper.exe ./cmd/script-api-helper; if ($?) { Copy-Item -LiteralPath ".\script-api-helper.exe" -Destination "$env:USERPROFILE\.local\bin\script-api-helper.exe" -Force; Write-Host "Built and deployed to ~/.local/bin/script-api-helper.exe" }

@@ -101,6 +101,14 @@ func TestDoctorMissingMinecraftServer(t *testing.T) {
 	}
 }
 
+func TestDoctorValidManifestWithUUIDDependencyVersionArray(t *testing.T) {
+	m := `{"format_version":2,"header":{"name":"Test","description":"Test","uuid":"550e8400-e29b-41d4-a716-446655440000","version":[1,0,0],"min_engine_version":[1,21,60]},"modules":[{"type":"resources","uuid":"550e8400-e29b-41d4-a716-446655440001","version":[1,0,0]}],"dependencies":[{"uuid":"550e8400-e29b-41d4-a716-446655440002","version":[2,2,0]}]}`
+	result := RunDoctor(m, nil)
+	if !result.OK {
+		t.Errorf("expected OK=true for UUID dependency version array, got errors: %v", result.Errors)
+	}
+}
+
 func hasRule(result *DoctorOutput, rule string) bool {
 	for _, e := range result.Errors {
 		if e.Rule == rule {

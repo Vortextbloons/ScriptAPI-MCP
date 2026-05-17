@@ -190,6 +190,34 @@ func TestParseManifest(t *testing.T) {
 	}
 }
 
+// TestParseManifestUUIDDependencyVersionArray tests UUID dependency version arrays.
+func TestParseManifestUUIDDependencyVersionArray(t *testing.T) {
+	json := `{
+		"format_version": 2,
+		"header": {
+			"name": "Test",
+			"version": [1, 0, 0]
+		},
+		"dependencies": [
+			{
+				"uuid": "550e8400-e29b-41d4-a716-446655440000",
+				"version": [2, 2, 0]
+			}
+		]
+	}`
+
+	manifest, err := ParseManifest(json)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(manifest.Dependencies) != 1 {
+		t.Fatalf("dependencies count = %d, want 1", len(manifest.Dependencies))
+	}
+	if manifest.Dependencies[0].Version == "" {
+		t.Error("expected dependency version to be populated")
+	}
+}
+
 // TestParseManifestInvalidJSON tests error handling
 func TestParseManifestInvalidJSON(t *testing.T) {
 	_, err := ParseManifest("invalid json")
