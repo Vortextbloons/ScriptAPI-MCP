@@ -11,12 +11,12 @@ import (
 )
 
 type DiffScriptAPIVersionsInput struct {
-	Module            string `json:"module" mcp:"required,description='Module name, e.g. @minecraft/server'"`
-	FromVersion       string `json:"from_version" mcp:"required,description='Exact publish version for baseline (e.g. 2.7.0)'"`
-	ToVersion         string `json:"to_version" mcp:"required,description='Exact publish version for target (e.g. 2.8.0-beta.1.26.20-preview.28)'"`
-	IncludeNonBreaking bool  `json:"include_non_breaking" mcp:"description='Include additive/non-breaking changes in output'"`
-	SymbolFilter      string `json:"symbol_filter" mcp:"description='Only show results containing this substring (case-insensitive)'"`
-	MaxResults        int    `json:"max_results" mcp:"description='Cap results (default 50, max 200)'"`
+	Module             string `json:"module" mcp:"required,description='Module name, e.g. @minecraft/server'"`
+	FromVersion        string `json:"from_version" mcp:"required,description='Exact publish version for baseline (e.g. 2.7.0)'"`
+	ToVersion          string `json:"to_version" mcp:"required,description='Exact publish version for target (e.g. 2.8.0-beta.1.26.20-preview.28)'"`
+	IncludeNonBreaking bool   `json:"include_non_breaking" mcp:"description='Include additive/non-breaking changes in output'"`
+	SymbolFilter       string `json:"symbol_filter" mcp:"description='Only show results containing this substring (case-insensitive)'"`
+	MaxResults         int    `json:"max_results" mcp:"description='Cap results (default 50, max 200)'"`
 }
 
 func RegisterDiffScriptAPIVersions(server *mcp.Server, npmClient *npm.Client) error {
@@ -29,20 +29,20 @@ func RegisterDiffScriptAPIVersions(server *mcp.Server, npmClient *npm.Client) er
 
 func handleDiffScriptAPIVersions(args DiffScriptAPIVersionsInput, npmClient *npm.Client) (*mcp.ToolResponse, error) {
 	if args.Module == "" {
-		return mcp.NewToolResponse(mcp.NewTextContent("Module name is required")), nil
+		return toolErrorResponse("INVALID_INPUT", "module name is required", false), nil
 	}
 
 	fromExists, err := npmClient.LookupExactVersion(args.Module, args.FromVersion)
 	if err != nil {
-		return mcp.NewToolResponse(mcp.NewTextContent(fmt.Sprintf("Error checking from_version: %v", err))), nil
+		return toolErrorResponse("VERSION_LOOKUP_FAILED", fmt.Sprintf("error checking from_version: %v", err), true), nil
 	}
 	if !fromExists {
 		candidates, cerr := npmClient.ListConcreteVersions(args.Module, args.FromVersion)
 		if cerr != nil {
-			return mcp.NewToolResponse(mcp.NewTextContent(fmt.Sprintf("Version %q is not an exact publish and could not list candidates: %v", args.FromVersion, cerr))), nil
+			return toolErrorResponse("AMBIGUOUS_VERSION", fmt.Sprintf("version %q is not an exact publish and could not list candidates: %v", args.FromVersion, cerr), false), nil
 		}
 		if len(candidates) == 0 {
-			return mcp.NewToolResponse(mcp.NewTextContent(fmt.Sprintf("Version %q is not an exact publish and no matching candidates found", args.FromVersion))), nil
+			return toolErrorResponse("AMBIGUOUS_VERSION", fmt.Sprintf("version %q is not an exact publish and no matching candidates found", args.FromVersion), false), nil
 		}
 		jsonCandidates, _ := json.MarshalIndent(candidates, "", "  ")
 		return mcp.NewToolResponse(mcp.NewTextContent(fmt.Sprintf("Version %q is ambiguous. Use an exact publish. Matching concrete versions:\n%s", args.FromVersion, string(jsonCandidates)))), nil
@@ -50,15 +50,15 @@ func handleDiffScriptAPIVersions(args DiffScriptAPIVersionsInput, npmClient *npm
 
 	toExists, err := npmClient.LookupExactVersion(args.Module, args.ToVersion)
 	if err != nil {
-		return mcp.NewToolResponse(mcp.NewTextContent(fmt.Sprintf("Error checking to_version: %v", err))), nil
+		return toolErrorResponse("VERSION_LOOKUP_FAILED", fmt.Sprintf("error checking to_version: %v", err), true), nil
 	}
 	if !toExists {
 		candidates, cerr := npmClient.ListConcreteVersions(args.Module, args.ToVersion)
 		if cerr != nil {
-			return mcp.NewToolResponse(mcp.NewTextContent(fmt.Sprintf("Version %q is not an exact publish and could not list candidates: %v", args.ToVersion, cerr))), nil
+			return toolErrorResponse("AMBIGUOUS_VERSION", fmt.Sprintf("version %q is not an exact publish and could not list candidates: %v", args.ToVersion, cerr), false), nil
 		}
 		if len(candidates) == 0 {
-			return mcp.NewToolResponse(mcp.NewTextContent(fmt.Sprintf("Version %q is not an exact publish and no matching candidates found", args.ToVersion))), nil
+			return toolErrorResponse("AMBIGUOUS_VERSION", fmt.Sprintf("version %q is not an exact publish and no matching candidates found", args.ToVersion), false), nil
 		}
 		jsonCandidates, _ := json.MarshalIndent(candidates, "", "  ")
 		return mcp.NewToolResponse(mcp.NewTextContent(fmt.Sprintf("Version %q is ambiguous. Use an exact publish. Matching concrete versions:\n%s", args.ToVersion, string(jsonCandidates)))), nil
@@ -66,20 +66,20 @@ func handleDiffScriptAPIVersions(args DiffScriptAPIVersionsInput, npmClient *npm
 
 	fromDTS, err := npmClient.FetchTypes(args.Module, args.FromVersion)
 	if err != nil {
-		return mcp.NewToolResponse(mcp.NewTextContent(fmt.Sprintf("Error fetching types for %s@%s: %v", args.Module, args.FromVersion, err))), nil
+		return toolErrorResponse("FETCH_TYPES_FAILED", fmt.Sprintf("error fetching types for %s@%s: %v", args.Module, args.FromVersion, err), true), nil
 	}
 	toDTS, err := npmClient.FetchTypes(args.Module, args.ToVersion)
 	if err != nil {
-		return mcp.NewToolResponse(mcp.NewTextContent(fmt.Sprintf("Error fetching types for %s@%s: %v", args.Module, args.ToVersion, err))), nil
+		return toolErrorResponse("FETCH_TYPES_FAILED", fmt.Sprintf("error fetching types for %s@%s: %v", args.Module, args.ToVersion, err), true), nil
 	}
 
 	fromTable, err := apidiff.BuildSymbolTable(fromDTS, args.Module, args.FromVersion)
 	if err != nil {
-		return mcp.NewToolResponse(mcp.NewTextContent(fmt.Sprintf("Error building symbol table for %s@%s: %v", args.Module, args.FromVersion, err))), nil
+		return toolErrorResponse("SYMBOL_TABLE_FAILED", fmt.Sprintf("error building symbol table for %s@%s: %v", args.Module, args.FromVersion, err), false), nil
 	}
 	toTable, err := apidiff.BuildSymbolTable(toDTS, args.Module, args.ToVersion)
 	if err != nil {
-		return mcp.NewToolResponse(mcp.NewTextContent(fmt.Sprintf("Error building symbol table for %s@%s: %v", args.Module, args.ToVersion, err))), nil
+		return toolErrorResponse("SYMBOL_TABLE_FAILED", fmt.Sprintf("error building symbol table for %s@%s: %v", args.Module, args.ToVersion, err), false), nil
 	}
 
 	maxResults := args.MaxResults

@@ -74,3 +74,26 @@ system.runInterval(() => {
 }, 20); // Every 20 ticks = 1 second
 `
 }
+
+// ModuleGuide returns a quick module/version guide for Bedrock Script API projects.
+func ModuleGuide() string {
+	return `# Bedrock Script API Module Guide
+
+## Choosing Modules
+- Always include @minecraft/server for gameplay logic.
+- Add @minecraft/server-ui for forms and player dialogs.
+- Add @minecraft/server-net when outbound HTTP/network is needed.
+- Add @minecraft/server-admin for administrative APIs.
+- Add @minecraft/server-gametest for GameTest utilities.
+
+## Version Flow
+1. Resolve your Minecraft version + channel (stable/beta/preview).
+2. Use exact npm publish versions for type lookups and API diffing.
+3. Use normalized manifest versions for manifest dependencies.
+
+## Safety Rules
+- Do not use deprecated mojang-* modules.
+- Keep module versions aligned across manifest and local node_modules.
+- Run manifest_doctor after dependency edits.
+`
+}

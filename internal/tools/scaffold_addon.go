@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 
@@ -28,24 +29,28 @@ type ScaffoldAddonInput struct {
 	WriteFiles                     bool     `json:"write_files" mcp:"description='Whether to write the generated scaffold to disk'"`
 	MCDevPath                      string   `json:"mcdev_path" mcp:"required,description='Path to Minecraft Bedrock com.mojang folder'"`
 	BPFolderName                   string   `json:"bp_folder_name" mcp:"description='Source behavior pack folder name in project (default: behavior_pack)'"`
-	RPFolderName                    string   `json:"rp_folder_name" mcp:"description='Source resource pack folder name in project (default: resource_pack)'"`
+	RPFolderName                   string   `json:"rp_folder_name" mcp:"description='Source resource pack folder name in project (default: resource_pack)'"`
 	BPDestName                     string   `json:"bp_dest_name" mcp:"description='Destination folder name in development_behavior_packs (e.g., MyAddon or MyAddon BP)'"`
-	RPDestName                      string   `json:"rp_dest_name" mcp:"description='Destination folder name in development_resource_packs (e.g., MyAddon RP or MyAddon Resources)'"`
+	RPDestName                     string   `json:"rp_dest_name" mcp:"description='Destination folder name in development_resource_packs (e.g., MyAddon RP or MyAddon Resources)'"`
 	CreateInCurrentDir             bool     `json:"create_in_current_dir" mcp:"description='If true, creates addon in current directory instead of subfolder'"`
 	ProjectPath                    string   `json:"project_path" mcp:"description='Project folder used for local node_modules validation'"`
+	DryRun                         bool     `json:"dry_run" mcp:"description='If true, previews files and does not write to disk'"`
+	OverwriteExisting              bool     `json:"overwrite_existing" mcp:"description='If true, allows overwriting existing files when write_files=true'"`
 }
 
 type ScaffoldAddonOutput struct {
-	BehaviorPackManifest string            `json:"behavior_pack_manifest"`
-	ResourcePackManifest string            `json:"resource_pack_manifest,omitempty"`
-	FileStructure        []string          `json:"file_structure"`
+	BehaviorPackManifest string              `json:"behavior_pack_manifest"`
+	ResourcePackManifest string              `json:"resource_pack_manifest,omitempty"`
+	FileStructure        []string            `json:"file_structure"`
 	VersionLookupSteps   []VersionLookupStep `json:"version_lookup_steps,omitempty"`
-	StarterCode          map[string]string `json:"starter_code"`
-	PackageJSON          string            `json:"package_json,omitempty"`
-	DeployScript         string            `json:"deploy_script,omitempty"`
-	WrittenFiles         []string          `json:"written_files,omitempty"`
-	OutputPath           string            `json:"output_path,omitempty"`
-	ValidationWarnings   []string          `json:"validation_warnings,omitempty"`
+	StarterCode          map[string]string   `json:"starter_code"`
+	PackageJSON          string              `json:"package_json,omitempty"`
+	DeployScript         string              `json:"deploy_script,omitempty"`
+	WrittenFiles         []string            `json:"written_files,omitempty"`
+	OutputPath           string              `json:"output_path,omitempty"`
+	WouldWriteFiles      []string            `json:"would_write_files,omitempty"`
+	SkippedFiles         []string            `json:"skipped_files,omitempty"`
+	ValidationWarnings   []string            `json:"validation_warnings,omitempty"`
 }
 
 type VersionLookupStep struct {
@@ -53,20 +58,20 @@ type VersionLookupStep struct {
 	Command string `json:"command"`
 }
 
-func RegisterScaffoldAddon(server *mcp.Server) error {
+func RegisterScaffoldAddon(server *mcp.Server, npmClient *npm.Client) error {
 	return server.RegisterTool("scaffold_addon",
 		"Scaffolds a new Minecraft Bedrock addon with behavior pack, resource pack, and optional deploy script. First ask for the target Minecraft game version (e.g., 1.21.70, 1.26.13). Then ask what dependency channel to use (stable, beta, or preview) as this determines the correct dependency versions. Also ask the user to inspect npm versions with `npm view <module> versions --json` for each selected dependency before choosing the matching channel version. Set write_files=true to write the scaffold to disk. When create_deploy_script is true, also ask for the exact Minecraft com.mojang path plus BP/RP source and destination folder names.",
 		func(args ScaffoldAddonInput) (*mcp.ToolResponse, error) {
-			return handleScaffoldAddon(args)
+			return handleScaffoldAddon(args, npmClient)
 		})
 }
 
-func handleScaffoldAddon(args ScaffoldAddonInput) (*mcp.ToolResponse, error) {
+func handleScaffoldAddon(args ScaffoldAddonInput, npmClient *npm.Client) (*mcp.ToolResponse, error) {
 	if args.ScriptingLanguage != "javascript" && args.ScriptingLanguage != "typescript" {
-		return mcp.NewToolResponse(mcp.NewTextContent(fmt.Sprintf("Invalid scripting_language: %q. Must be 'javascript' or 'typescript'.", args.ScriptingLanguage))), nil
+		return toolErrorResponse("INVALID_INPUT", fmt.Sprintf("invalid scripting_language: %q", args.ScriptingLanguage), false, "Use javascript or typescript"), nil
 	}
 	if strings.TrimSpace(args.ServerVersion) == "" {
-		return mcp.NewToolResponse(mcp.NewTextContent("Minecraft version is required.")), nil
+		return toolErrorResponse("INVALID_INPUT", "minecraft version is required", false, "Provide server_version like 1.21.70"), nil
 	}
 
 	// Validate channel
@@ -90,10 +95,9 @@ func handleScaffoldAddon(args ScaffoldAddonInput) (*mcp.ToolResponse, error) {
 	// If dependencies are explicitly provided, use them with channel resolution
 	if len(args.Dependencies) > 0 {
 		modules = append([]string(nil), args.Dependencies...)
-		npmClient := npm.NewClient()
 		deps, err = manifest.BuildDependenciesWithChannel(npmClient, args.Dependencies, args.ServerVersion, channel)
 		if err != nil {
-			return mcp.NewToolResponse(mcp.NewTextContent(fmt.Sprintf("Error resolving dependencies: %v", err))), nil
+			return toolErrorResponse("DEPENDENCY_RESOLVE_FAILED", fmt.Sprintf("error resolving dependencies: %v", err), false, "Check dependency names and channel"), nil
 		}
 		manifestVersions := make(map[string]string, len(deps))
 		for _, dep := range deps {
@@ -106,10 +110,9 @@ func handleScaffoldAddon(args ScaffoldAddonInput) (*mcp.ToolResponse, error) {
 		if args.NeedsUIMenus {
 			modules = append(modules, "@minecraft/server-ui")
 		}
-		npmClient := npm.NewClient()
 		deps, err = manifest.BuildDependenciesWithChannel(npmClient, modules, args.ServerVersion, channel)
 		if err != nil {
-			return mcp.NewToolResponse(mcp.NewTextContent(fmt.Sprintf("Error resolving dependencies: %v", err))), nil
+			return toolErrorResponse("DEPENDENCY_RESOLVE_FAILED", fmt.Sprintf("error resolving dependencies: %v", err), false, "Check minecraft version and channel"), nil
 		}
 		manifestVersions := make(map[string]string, len(deps))
 		for _, dep := range deps {
@@ -121,7 +124,7 @@ func handleScaffoldAddon(args ScaffoldAddonInput) (*mcp.ToolResponse, error) {
 	bp := manifest.GenerateBP(args.AddonName, args.AddonDescription, deps, bpUUID)
 	bpJSON, err := manifest.FormatManifest(bp)
 	if err != nil {
-		return mcp.NewToolResponse(mcp.NewTextContent(fmt.Sprintf("Error formatting BP manifest: %v", err))), nil
+		return toolErrorResponse("MANIFEST_FORMAT_FAILED", fmt.Sprintf("error formatting BP manifest: %v", err), false), nil
 	}
 
 	output := ScaffoldAddonOutput{
@@ -136,7 +139,7 @@ func handleScaffoldAddon(args ScaffoldAddonInput) (*mcp.ToolResponse, error) {
 		rp := manifest.GenerateRP(args.AddonName, args.AddonDescription, rpUUID, bpUUID)
 		rpJSON, err := manifest.FormatManifest(rp)
 		if err != nil {
-			return mcp.NewToolResponse(mcp.NewTextContent(fmt.Sprintf("Error formatting RP manifest: %v", err))), nil
+			return toolErrorResponse("MANIFEST_FORMAT_FAILED", fmt.Sprintf("error formatting RP manifest: %v", err), false), nil
 		}
 		output.ResourcePackManifest = rpJSON
 	}
@@ -144,22 +147,31 @@ func handleScaffoldAddon(args ScaffoldAddonInput) (*mcp.ToolResponse, error) {
 	if args.CreateDeployScript {
 		output.DeployScript = generateDeployScript(args)
 		output.PackageJSON = manifest.GeneratePackageJSON(args.AddonName, deps, args.ScriptingLanguage)
+		if runtime.GOOS != "windows" {
+			output.ValidationWarnings = append(output.ValidationWarnings, "WARNING: generated deploy.js production packaging uses PowerShell Compress-Archive and is Windows-oriented.")
+		}
 	}
 
 	if args.WriteFiles {
 		rootPath, err := resolveScaffoldRoot(args.ProjectPath, args.AddonName, args.CreateInCurrentDir)
 		if err != nil {
-			return mcp.NewToolResponse(mcp.NewTextContent(fmt.Sprintf("Error resolving output path: %v", err))), nil
+			return toolErrorResponse("OUTPUT_PATH_INVALID", fmt.Sprintf("error resolving output path: %v", err), false), nil
 		}
 
 		files := buildScaffoldFiles(output, args.CreateDeployScript)
-		written, err := writeScaffoldFiles(rootPath, files)
-		if err != nil {
-			return mcp.NewToolResponse(mcp.NewTextContent(fmt.Sprintf("Error writing scaffold files: %v", err))), nil
-		}
+		if args.DryRun {
+			output.OutputPath = rootPath
+			output.WouldWriteFiles = sortedPaths(files)
+		} else {
+			written, skipped, err := writeScaffoldFiles(rootPath, files, args.OverwriteExisting)
+			if err != nil {
+				return toolErrorResponse("WRITE_FAILED", fmt.Sprintf("error writing scaffold files: %v", err), false, "Set overwrite_existing=true to replace existing files", "Use dry_run=true to preview"), nil
+			}
 
-		output.OutputPath = rootPath
-		output.WrittenFiles = written
+			output.OutputPath = rootPath
+			output.WrittenFiles = written
+			output.SkippedFiles = skipped
+		}
 	}
 
 	jsonOut, _ := json.MarshalIndent(output, "", "  ")
@@ -208,30 +220,46 @@ func buildScaffoldFiles(output ScaffoldAddonOutput, includeDeploy bool) map[stri
 	return files
 }
 
-func writeScaffoldFiles(rootPath string, files map[string]string) ([]string, error) {
-	if err := os.MkdirAll(rootPath, 0755); err != nil {
-		return nil, fmt.Errorf("failed to create scaffold root: %w", err)
-	}
-
+func sortedPaths(files map[string]string) []string {
 	paths := make([]string, 0, len(files))
 	for relPath := range files {
 		paths = append(paths, relPath)
 	}
 	sort.Strings(paths)
+	return paths
+}
+
+func writeScaffoldFiles(rootPath string, files map[string]string, overwrite bool) ([]string, []string, error) {
+	if err := os.MkdirAll(rootPath, 0755); err != nil {
+		return nil, nil, fmt.Errorf("failed to create scaffold root: %w", err)
+	}
+
+	paths := sortedPaths(files)
 
 	written := make([]string, 0, len(paths))
+	skipped := make([]string, 0)
 	for _, relPath := range paths {
+		cleanRel := filepath.Clean(relPath)
+		if filepath.IsAbs(cleanRel) || strings.HasPrefix(cleanRel, "..") {
+			return nil, nil, fmt.Errorf("invalid relative path %q", relPath)
+		}
 		fullPath := filepath.Join(rootPath, relPath)
 		if err := os.MkdirAll(filepath.Dir(fullPath), 0755); err != nil {
-			return nil, fmt.Errorf("failed to create directory for %s: %w", relPath, err)
+			return nil, nil, fmt.Errorf("failed to create directory for %s: %w", relPath, err)
+		}
+		if !overwrite {
+			if _, err := os.Stat(fullPath); err == nil {
+				skipped = append(skipped, relPath)
+				continue
+			}
 		}
 		if err := os.WriteFile(fullPath, []byte(files[relPath]), 0644); err != nil {
-			return nil, fmt.Errorf("failed to write %s: %w", relPath, err)
+			return nil, nil, fmt.Errorf("failed to write %s: %w", relPath, err)
 		}
 		written = append(written, relPath)
 	}
 
-	return written, nil
+	return written, skipped, nil
 }
 
 func buildVersionLookupSteps(modules []string) []VersionLookupStep {
@@ -265,44 +293,140 @@ func generateDeployScript(args ScaffoldAddonInput) string {
 	}
 
 	needsRP := args.NeedsCustomBlocksItemsEntities
+	lang := args.ScriptingLanguage
+	addonName := args.AddonName
+	needsJSBuild := lang != "typescript"
 
-	if args.MCDevPath == "" {
-		return ""
-	}
+	var script string
 
+	// --- header & constants ---
+	script = `const { execSync } = require("child_process");
+const { existsSync, cpSync, mkdirSync, rmSync, readFileSync, renameSync } = require("fs");
+const { resolve, join } = require("path");
+
+const ROOT = resolve(__dirname, "..");
+const BP_SRC = join(ROOT, "` + bpFolder + `");
+`
 	if needsRP {
-		script := fmt.Sprintf(`const { cpSync, mkdirSync, rmSync } = require("fs");
-const path = require("path");
+		script += `const RP_SRC = join(ROOT, "` + rpFolder + `");
+`
+	}
+	script += `const BP_DEST_NAME = "` + bpDest + `";
+`
+	if needsRP {
+		script += `const RP_DEST_NAME = "` + rpDest + `";
+`
+	}
+	script += `const ADDON_NAME = "` + addonName + `";
 
-const mcDev = %q;
-const bpSrc = path.join(__dirname, "..", "%s");
-const rpSrc = path.join(__dirname, "..", "%s");
-const bpDest = path.join(mcDev, "development_behavior_packs", "%s");
-const rpDest = path.join(mcDev, "development_resource_packs", "%s");
-
-for (const [src, dest, name] of [[bpSrc, bpDest, "BP"], [rpSrc, rpDest, "RP"]]) {
-  rmSync(dest, { recursive: true, force: true });
-  mkdirSync(dest, { recursive: true });
-  cpSync(src, dest, { recursive: true, force: true });
-  console.log(` + "`" + `Deployed ${name}: ${dest}` + "`" + `);
+function readEnv(key) {
+  const envPath = join(ROOT, ".env");
+  if (!existsSync(envPath)) return "";
+  const env = readFileSync(envPath, "utf8");
+  for (const line of env.split("\n")) {
+    const trimmed = line.trim();
+    if (trimmed && !trimmed.startsWith("#")) {
+      const eq = trimmed.indexOf("=");
+      if (eq > 0 && trimmed.slice(0, eq).trim() === key) {
+        return trimmed.slice(eq + 1).trim();
+      }
+    }
+  }
+  return "";
 }
-`, args.MCDevPath, bpFolder, rpFolder, bpDest, rpDest)
-		return script
+
+`
+	// --- build step ---
+	if needsJSBuild {
+		script += `function build() {
+  const srcFile = join(ROOT, "src", "main.js");
+  const outDir = join(ROOT, "behavior_pack", "scripts");
+  const outFile = join(outDir, "main.js");
+  if (existsSync(srcFile)) {
+    if (!existsSync(outDir)) mkdirSync(outDir, { recursive: true });
+    cpSync(srcFile, outFile);
+    console.log("  Built src/main.js -> behavior_pack/scripts/main.js");
+  }
+}
+
+`
+	} else {
+		script += `function build() {
+  // TypeScript: build handled by esbuild via package.json
+}
+
+`
 	}
 
-	script := fmt.Sprintf(`const { cpSync, mkdirSync, rmSync } = require("fs");
-const path = require("path");
+	// --- dev command ---
+	script += `function dev() {
+  build();
+  const mcDev = readEnv("DEPLOY_PATH");
+  if (!mcDev) {
+    console.error("DEPLOY_PATH not set in .env");
+    process.exit(1);
+  }
+  const bDest = join(mcDev, "development_behavior_packs", BP_DEST_NAME);
+  rmSync(bDest, { recursive: true, force: true });
+  mkdirSync(bDest, { recursive: true });
+  cpSync(BP_SRC, bDest, { recursive: true, force: true });
+  console.log("Deployed BP: " + bDest);
+`
+	if needsRP {
+		script += `  const rDest = join(mcDev, "development_resource_packs", RP_DEST_NAME);
+  rmSync(rDest, { recursive: true, force: true });
+  mkdirSync(rDest, { recursive: true });
+  cpSync(RP_SRC, rDest, { recursive: true, force: true });
+  console.log("Deployed RP: " + rDest);
+`
+	}
+	script += `}
 
-const mcDev = %q;
-const bpSrc = path.join(__dirname, "..", "%s");
-const bpDest = path.join(mcDev, "development_behavior_packs", "%s");
+`
+	// --- prod command ---
+	script += `function prod() {
+  build();
+  const outPath = readEnv("DOWNLOAD_PATH");
+  if (!outPath) {
+    console.error("DOWNLOAD_PATH not set in .env");
+    process.exit(1);
+  }
+  const tempDir = join(ROOT, "temp_release");
+  if (existsSync(tempDir)) rmSync(tempDir, { recursive: true });
+  mkdirSync(tempDir, { recursive: true });
 
-rmSync(bpDest, { recursive: true, force: true });
-mkdirSync(bpDest, { recursive: true });
-cpSync(bpSrc, bpDest, { recursive: true, force: true });
-console.log(` + "`" + `Deployed BP: ${bpDest}` + "`" + `);
-`, args.MCDevPath, bpFolder, bpDest)
+  console.log("Zipping behavior pack...");
+  const bpMcpack = join(tempDir, ADDON_NAME + "_BP.mcpack");
+  execSync(` + "`" + `powershell -NoProfile -Command "Compress-Archive -Path '${BP_SRC}\\*' -DestinationPath '${bpMcpack}' -Force"` + "`" + `, { stdio: "pipe" });
+  const packs = ["'" + bpMcpack + "'"];
+`
+	if needsRP {
+		script += `  console.log("Zipping resource pack...");
+  const rpMcpack = join(tempDir, ADDON_NAME + "_RP.mcpack");
+  execSync(` + "`" + `powershell -NoProfile -Command "Compress-Archive -Path '${RP_SRC}\\*' -DestinationPath '${rpMcpack}' -Force"` + "`" + `, { stdio: "pipe" });
+  packs.push("'" + rpMcpack + "'");
+`
+	}
+	script += `  console.log("Creating .mcaddon...");
+  const addonZip = join(tempDir, ADDON_NAME + ".zip");
+  execSync(` + "`" + `powershell -NoProfile -Command "Compress-Archive -Path ${packs.join(',')} -DestinationPath '${addonZip}' -Force"` + "`" + `, { stdio: "pipe" });
 
+  const outputPath = join(outPath, ADDON_NAME + ".mcaddon");
+  renameSync(addonZip, outputPath);
+  rmSync(tempDir, { recursive: true });
+  console.log("Created " + outputPath);
+}
+
+const cmd = process.argv[2];
+if (cmd === "dev") dev();
+else if (cmd === "prod") prod();
+else {
+  console.log("Usage: node scripts/deploy.js <dev|prod>");
+  console.log("  dev   - Build and deploy to Minecraft development folders");
+  console.log("  prod  - Build and create .mcaddon for distribution");
+  process.exit(1);
+}
+`
 	return script
 }
 
@@ -441,7 +565,7 @@ func RunScaffoldAddonCLI() error {
 		RPDestName:                     rpDest,
 	}
 
-	output, err := handleScaffoldAddon(input)
+	output, err := handleScaffoldAddon(input, npm.NewClient())
 	if err != nil {
 		return err
 	}
@@ -625,7 +749,7 @@ func CmdScaffoldAddon(args []string) error {
 		i++
 	}
 
-	output, err := handleScaffoldAddon(input)
+	output, err := handleScaffoldAddon(input, npm.NewClient())
 	if err != nil {
 		return err
 	}

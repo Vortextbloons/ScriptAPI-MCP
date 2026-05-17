@@ -21,7 +21,8 @@ type ResolveAPIEnvInput struct {
 // ResolveAPIEnvOutput is the output schema for Tool 1
 type ResolveAPIEnvOutput struct {
 	MinecraftVersion string   `json:"minecraft_version"`
-	NPMVersion       string   `json:"npm_version"`
+	ExactNPMVersion  string   `json:"exact_npm_version"`
+	ManifestVersion  string   `json:"manifest_version"`
 	AvailableModules []string `json:"available_modules"`
 	Guardrails       []string `json:"guardrails"`
 	ProjectAdvice    string   `json:"project_advice"`
@@ -46,14 +47,15 @@ func handleResolveAPIEnvironment(args ResolveAPIEnvInput, npmClient *npm.Client)
 	// Fetch version matrix from npm
 	vm, err := npmClient.FetchVersionMatrix("@minecraft/server")
 	if err != nil {
-		return mcp.NewToolResponse(mcp.NewTextContent(fmt.Sprintf("Error fetching npm data: %v", err))), nil
+		return toolErrorResponse("NPM_FETCH_FAILED", fmt.Sprintf("failed to fetch npm data: %v", err), true, "Retry in a moment", "Check network connectivity"), nil
 	}
 
-	// Resolve version with channel support
-	resolved, err := npm.ResolveVersionForChannel(vm, args.MinecraftVersion, channel)
+	// Resolve exact and manifest versions with channel support
+	exact, err := npm.ResolveExactVersionForChannel(vm, args.MinecraftVersion, channel)
 	if err != nil {
-		return mcp.NewToolResponse(mcp.NewTextContent(fmt.Sprintf("Error resolving version: %v", err))), nil
+		return toolErrorResponse("VERSION_RESOLVE_FAILED", fmt.Sprintf("failed to resolve version: %v", err), false, "Use channel stable/beta/preview", "Try minecraft_version=latest"), nil
 	}
+	resolved := npm.NormalizeVersion(exact)
 
 	// Determine available modules for this version
 	availableModules := []string{"@minecraft/server"}
@@ -83,7 +85,8 @@ func handleResolveAPIEnvironment(args ResolveAPIEnvInput, npmClient *npm.Client)
 
 	output := ResolveAPIEnvOutput{
 		MinecraftVersion: args.MinecraftVersion,
-		NPMVersion:       resolved,
+		ExactNPMVersion:  exact,
+		ManifestVersion:  resolved,
 		AvailableModules: availableModules,
 		Guardrails:       guardrails,
 		ProjectAdvice:    advice,

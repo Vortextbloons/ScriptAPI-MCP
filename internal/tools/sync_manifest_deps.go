@@ -28,18 +28,18 @@ func handleSyncManifestDependencies(args SyncManifestDepsInput) (*mcp.ToolRespon
 	// Parse existing manifest
 	m, err := manifest.ParseManifest(args.CurrentManifestJSON)
 	if err != nil {
-		return mcp.NewToolResponse(mcp.NewTextContent(fmt.Sprintf("Error parsing manifest: %v", err))), nil
+		return toolErrorResponse("MANIFEST_PARSE_FAILED", fmt.Sprintf("error parsing manifest: %v", err), false), nil
 	}
 
 	// Apply changes
 	if err := manifest.UpdateDependencies(&m, args.AddedModules, args.RemovedModules); err != nil {
-		return mcp.NewToolResponse(mcp.NewTextContent(fmt.Sprintf("Validation error: %v", err))), nil
+		return toolErrorResponse("DEPENDENCY_VALIDATION_FAILED", fmt.Sprintf("validation error: %v", err), false), nil
 	}
 
 	// Format back to JSON
 	updated, err := manifest.FormatManifest(m)
 	if err != nil {
-		return mcp.NewToolResponse(mcp.NewTextContent(fmt.Sprintf("Error formatting manifest: %v", err))), nil
+		return toolErrorResponse("MANIFEST_FORMAT_FAILED", fmt.Sprintf("error formatting manifest: %v", err), false), nil
 	}
 
 	return mcp.NewToolResponse(mcp.NewTextContent(updated)), nil

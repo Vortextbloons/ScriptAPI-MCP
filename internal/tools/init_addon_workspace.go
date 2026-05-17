@@ -34,19 +34,19 @@ type InitAddonWorkspaceOutput struct {
 }
 
 // RegisterInitAddonWorkspace registers Tool 2
-func RegisterInitAddonWorkspace(server *mcp.Server) error {
+func RegisterInitAddonWorkspace(server *mcp.Server, npmClient *npm.Client) error {
 	return server.RegisterTool("init_addon_workspace",
 		"Generates folder structure, valid manifests with v4 UUIDs, and starter code. First ask for the target Minecraft game version (e.g., 1.21.70, 1.26.13). Then ask what dependency channel to use (stable, beta, or preview) as this determines the correct dependency versions.",
 		func(args InitAddonWorkspaceInput) (*mcp.ToolResponse, error) {
-			return handleInitAddonWorkspace(args)
+			return handleInitAddonWorkspace(args, npmClient)
 		})
 }
 
-func handleInitAddonWorkspace(args InitAddonWorkspaceInput) (*mcp.ToolResponse, error) {
+func handleInitAddonWorkspace(args InitAddonWorkspaceInput, npmClient *npm.Client) (*mcp.ToolResponse, error) {
 	// Validate language
 	lang := args.ScriptingLanguage
 	if lang != "javascript" && lang != "typescript" {
-		return mcp.NewToolResponse(mcp.NewTextContent(fmt.Sprintf("Invalid scripting_language: %q. Must be 'javascript' or 'typescript'.", lang))), nil
+		return toolErrorResponse("INVALID_INPUT", fmt.Sprintf("invalid scripting_language: %q", lang), false, "Use javascript or typescript"), nil
 	}
 
 	// Validate channel
@@ -69,10 +69,9 @@ func handleInitAddonWorkspace(args InitAddonWorkspaceInput) (*mcp.ToolResponse, 
 
 	// If dependencies are explicitly provided, use them with channel resolution
 	if len(args.Dependencies) > 0 {
-		npmClient := npm.NewClient()
 		deps, err = manifest.BuildDependenciesWithChannel(npmClient, args.Dependencies, args.ServerVersion, channel)
 		if err != nil {
-			return mcp.NewToolResponse(mcp.NewTextContent(fmt.Sprintf("Error resolving dependencies: %v", err))), nil
+			return toolErrorResponse("DEPENDENCY_RESOLVE_FAILED", fmt.Sprintf("error resolving dependencies: %v", err), false, "Check minecraft version and dependency channel"), nil
 		}
 		manifestVersions := make(map[string]string, len(deps))
 		for _, dep := range deps {
@@ -86,10 +85,9 @@ func handleInitAddonWorkspace(args InitAddonWorkspaceInput) (*mcp.ToolResponse, 
 		if args.NeedsUIMenus {
 			modules = append(modules, "@minecraft/server-ui")
 		}
-		npmClient := npm.NewClient()
 		deps, err = manifest.BuildDependenciesWithChannel(npmClient, modules, args.ServerVersion, channel)
 		if err != nil {
-			return mcp.NewToolResponse(mcp.NewTextContent(fmt.Sprintf("Error resolving dependencies: %v", err))), nil
+			return toolErrorResponse("DEPENDENCY_RESOLVE_FAILED", fmt.Sprintf("error resolving dependencies: %v", err), false, "Check minecraft version and dependency channel"), nil
 		}
 		manifestVersions := make(map[string]string, len(deps))
 		for _, dep := range deps {
@@ -102,7 +100,7 @@ func handleInitAddonWorkspace(args InitAddonWorkspaceInput) (*mcp.ToolResponse, 
 	bp := manifest.GenerateBP(args.AddonName, args.AddonDescription, deps, bpUUID)
 	bpJSON, err := manifest.FormatManifest(bp)
 	if err != nil {
-		return mcp.NewToolResponse(mcp.NewTextContent(fmt.Sprintf("Error formatting BP manifest: %v", err))), nil
+		return toolErrorResponse("MANIFEST_FORMAT_FAILED", fmt.Sprintf("error formatting BP manifest: %v", err), false), nil
 	}
 
 	output := InitAddonWorkspaceOutput{
@@ -116,7 +114,7 @@ func handleInitAddonWorkspace(args InitAddonWorkspaceInput) (*mcp.ToolResponse, 
 		rp := manifest.GenerateRP(args.AddonName, args.AddonDescription, rpUUID, bpUUID)
 		rpJSON, err := manifest.FormatManifest(rp)
 		if err != nil {
-			return mcp.NewToolResponse(mcp.NewTextContent(fmt.Sprintf("Error formatting RP manifest: %v", err))), nil
+			return toolErrorResponse("MANIFEST_FORMAT_FAILED", fmt.Sprintf("error formatting RP manifest: %v", err), false), nil
 		}
 		output.ResourcePackManifest = rpJSON
 	}

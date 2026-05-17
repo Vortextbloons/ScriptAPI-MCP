@@ -52,6 +52,15 @@ func NormalizeVersion(version string) string {
 // ResolveVersionForChannel resolves a Minecraft version to an npm version for a specific channel.
 // Channels: "stable" (no beta/preview/rc), "beta" (has -beta but NOT -preview), "preview" (has -preview).
 func ResolveVersionForChannel(vm *VersionMatrix, minecraftVersion string, channel string) (string, error) {
+	exact, err := ResolveExactVersionForChannel(vm, minecraftVersion, channel)
+	if err != nil {
+		return "", err
+	}
+	return NormalizeVersion(exact), nil
+}
+
+// ResolveExactVersionForChannel resolves to an exact npm publish version for a channel.
+func ResolveExactVersionForChannel(vm *VersionMatrix, minecraftVersion string, channel string) (string, error) {
 	if channel == "" {
 		channel = "beta"
 	}
@@ -101,7 +110,7 @@ func ResolveVersionForChannel(vm *VersionMatrix, minecraftVersion string, channe
 		return compareSemver(candidates[i], candidates[j]) > 0
 	})
 
-	return NormalizeVersion(candidates[0]), nil
+	return candidates[0], nil
 }
 
 // matchesChannel checks if a version string matches the given channel

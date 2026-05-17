@@ -32,7 +32,7 @@ func NewWithTransport(tr transport.Transport) (*mcp.Server, error) {
 	if err := tools.RegisterResolveAPIEnvironment(server, npmClient); err != nil {
 		return nil, fmt.Errorf("failed to register resolve_api_environment: %w", err)
 	}
-	if err := tools.RegisterInitAddonWorkspace(server); err != nil {
+	if err := tools.RegisterInitAddonWorkspace(server, npmClient); err != nil {
 		return nil, fmt.Errorf("failed to register init_addon_workspace: %w", err)
 	}
 	if err := tools.RegisterSearchAPITypes(server, npmClient); err != nil {
@@ -44,7 +44,7 @@ func NewWithTransport(tr transport.Transport) (*mcp.Server, error) {
 	if err := tools.RegisterVersionInfo(server); err != nil {
 		return nil, fmt.Errorf("failed to register get_mcp_version: %w", err)
 	}
-	if err := tools.RegisterScaffoldAddon(server); err != nil {
+	if err := tools.RegisterScaffoldAddon(server, npmClient); err != nil {
 		return nil, fmt.Errorf("failed to register scaffold_addon: %w", err)
 	}
 	if err := tools.RegisterGenerateBedrockSnippet(server); err != nil {
@@ -62,6 +62,36 @@ func NewWithTransport(tr transport.Transport) (*mcp.Server, error) {
 	if err := tools.RegisterDiffScriptAPIVersions(server, npmClient); err != nil {
 		return nil, fmt.Errorf("failed to register diff_script_api_versions: %w", err)
 	}
+	if err := tools.RegisterInspectAddonWorkspace(server); err != nil {
+		return nil, fmt.Errorf("failed to register inspect_addon_workspace: %w", err)
+	}
+	if err := tools.RegisterValidateAddonWorkspace(server); err != nil {
+		return nil, fmt.Errorf("failed to register validate_addon_workspace: %w", err)
+	}
+	if err := tools.RegisterPackageAddon(server); err != nil {
+		return nil, fmt.Errorf("failed to register package_addon: %w", err)
+	}
+	if err := tools.RegisterDeployAddon(server); err != nil {
+		return nil, fmt.Errorf("failed to register deploy_addon: %w", err)
+	}
+	if err := tools.RegisterListAPIVersions(server, npmClient); err != nil {
+		return nil, fmt.Errorf("failed to register list_api_versions: %w", err)
+	}
+	if err := tools.RegisterSearchAPIMembers(server, npmClient); err != nil {
+		return nil, fmt.Errorf("failed to register search_api_members: %w", err)
+	}
+	if err := tools.RegisterGenerateUIForm(server); err != nil {
+		return nil, fmt.Errorf("failed to register generate_ui_form: %w", err)
+	}
+	if err := tools.RegisterGenerateCustomItem(server); err != nil {
+		return nil, fmt.Errorf("failed to register generate_custom_item: %w", err)
+	}
+	if err := tools.RegisterTroubleshootPackNotLoading(server); err != nil {
+		return nil, fmt.Errorf("failed to register troubleshoot_pack_not_loading: %w", err)
+	}
+	if err := tools.RegisterProjectHealthScore(server); err != nil {
+		return nil, fmt.Errorf("failed to register project_health_score: %w", err)
+	}
 
 	// Register static resource: bedrock://docs/strict_rules
 	if err := server.RegisterResource("bedrock://docs/strict_rules",
@@ -74,6 +104,18 @@ func NewWithTransport(tr transport.Transport) (*mcp.Server, error) {
 			), nil
 		}); err != nil {
 		return nil, fmt.Errorf("failed to register strict_rules resource: %w", err)
+	}
+
+	if err := server.RegisterResource("bedrock://docs/module_guide",
+		"Bedrock Script API Module Guide",
+		"Module selection and version guidance for Bedrock Script API",
+		"text/markdown",
+		func() (*mcp.ResourceResponse, error) {
+			return mcp.NewResourceResponse(
+				mcp.NewTextEmbeddedResource("bedrock://docs/module_guide", resources.ModuleGuide(), "text/markdown"),
+			), nil
+		}); err != nil {
+		return nil, fmt.Errorf("failed to register module_guide resource: %w", err)
 	}
 
 	return server, nil

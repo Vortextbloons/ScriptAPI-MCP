@@ -38,10 +38,10 @@ func GenerateBP(name, description string, deps []models.Dependency, bpUUID strin
 	return models.Manifest{
 		FormatVersion: 2,
 		Header: models.ManifestHeader{
-			Name:        name,
-			Description: description,
-			UUID:        bpUUID,
-			Version:     []int{1, 0, 0},
+			Name:             name,
+			Description:      description,
+			UUID:             bpUUID,
+			Version:          []int{1, 0, 0},
 			MinEngineVersion: []int{1, 21, 60},
 		},
 		Modules: []models.ManifestModule{
@@ -67,10 +67,10 @@ func GenerateRP(name, description, rpUUID, bpUUID string) models.Manifest {
 	return models.Manifest{
 		FormatVersion: 2,
 		Header: models.ManifestHeader{
-			Name:        name + " RP",
-			Description: description,
-			UUID:        rpUUID,
-			Version:     []int{1, 0, 0},
+			Name:             name + " RP",
+			Description:      description,
+			UUID:             rpUUID,
+			Version:          []int{1, 0, 0},
 			MinEngineVersion: []int{1, 21, 60},
 		},
 		Modules: []models.ManifestModule{
@@ -89,7 +89,7 @@ func GenerateRP(name, description, rpUUID, bpUUID string) models.Manifest {
 // GenerateStarterCode returns minimal starter JS/TS
 func GenerateStarterCode(lang, version string) map[string]string {
 	files := make(map[string]string)
-	
+
 	jsCode := fmt.Sprintf(`import { world, system } from "@minecraft/server";
 
 console.warn("Script loaded for version %s");
@@ -120,17 +120,17 @@ console.warn("Script loaded for version %s");
 func generateTSConfig() string {
 	cfg := map[string]interface{}{
 		"compilerOptions": map[string]interface{}{
-			"target":           "ES2020",
-			"module":           "ES2020",
-			"moduleResolution": "node",
-			"strict":           true,
-			"esModuleInterop":  true,
-			"skipLibCheck":     true,
+			"target":                           "ES2020",
+			"module":                           "ES2020",
+			"moduleResolution":                 "node",
+			"strict":                           true,
+			"esModuleInterop":                  true,
+			"skipLibCheck":                     true,
 			"forceConsistentCasingInFileNames": true,
-			"lib":              []string{"ES2020"},
-			"types":            []string{},
+			"lib":                              []string{"ES2020"},
+			"types":                            []string{},
 		},
-		"include": []string{"scripts/**/*"},
+		"include": []string{"src/**/*"},
 	}
 	b, _ := json.MarshalIndent(cfg, "", "  ")
 	return string(b)
@@ -156,14 +156,16 @@ func GeneratePackageJSON(addonName string, deps []models.Dependency, lang string
 
 	if lang == "typescript" {
 		externalStr := strings.Join(externalFlags, " ")
-		scripts["build"] = fmt.Sprintf("esbuild src/main.ts --bundle --format=esm --target=es2020 --outfile=behavior_pack/scripts/main.js %s && node scripts/deploy.js", externalStr)
+		scripts["build"] = fmt.Sprintf("esbuild src/main.ts --bundle --format=esm --target=es2020 --outfile=behavior_pack/scripts/main.js %s && node scripts/deploy.js dev", externalStr)
 		scripts["typecheck"] = "tsc --noEmit"
 		devDeps["esbuild"] = "^0.25.9"
 		devDeps["typescript"] = "^5.9.2"
 	} else {
-		scripts["build"] = "node scripts/deploy.js"
+		scripts["build"] = "node scripts/deploy.js dev"
 		devDeps["esbuild"] = "^0.25.9"
 	}
+	scripts["deploy:dev"] = "node scripts/deploy.js dev"
+	scripts["deploy:prod"] = "node scripts/deploy.js prod"
 
 	pkg := map[string]interface{}{
 		"name":    strings.ToLower(addonName),

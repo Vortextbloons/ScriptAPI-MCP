@@ -16,17 +16,26 @@ func Run() error {
 		return fmt.Errorf("failed to initialize server: %w", err)
 	}
 
-	if err := srv.Serve(); err != nil {
-		return fmt.Errorf("server serve error: %w", err)
-	}
-
-	// Handle graceful shutdown
+	// Handle graceful shutdown signals before serving.
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+	defer signal.Stop(sigCh)
+
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- srv.Serve()
+	}()
 
 	fmt.Fprintln(os.Stderr, "Bedrock Script API MCP server started. Waiting for requests...")
 
-	<-sigCh
-	fmt.Fprintln(os.Stderr, "Shutting down...")
-	return nil
+	select {
+	case serveErr := <-errCh:
+		if serveErr != nil {
+			return fmt.Errorf("server serve error: %w", serveErr)
+		}
+		return nil
+	case <-sigCh:
+		fmt.Fprintln(os.Stderr, "Shutting down...")
+		return nil
+	}
 }
