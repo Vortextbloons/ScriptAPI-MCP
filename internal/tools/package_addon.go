@@ -2,14 +2,11 @@ package tools
 
 import (
 	"archive/zip"
-	"encoding/json"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
-
-	mcp "github.com/metoro-io/mcp-golang"
 )
 
 type PackageAddonInput struct {
@@ -22,19 +19,6 @@ type PackageAddonOutput struct {
 	OutputPath string   `json:"output_path"`
 	Included   []string `json:"included"`
 	DryRun     bool     `json:"dry_run"`
-}
-
-func RegisterPackageAddon(server *mcp.Server) error {
-	return server.RegisterTool("package_addon",
-		"Packages an addon workspace into a .mcaddon archive cross-platform.",
-		func(args PackageAddonInput) (*mcp.ToolResponse, error) {
-			out, err := packageAddon(args)
-			if err != nil {
-				return toolErrorResponse("PACKAGE_FAILED", err.Error(), false), nil
-			}
-			b, _ := json.MarshalIndent(out, "", "  ")
-			return mcp.NewToolResponse(mcp.NewTextContent(string(b))), nil
-		})
 }
 
 func packageAddon(args PackageAddonInput) (*PackageAddonOutput, error) {

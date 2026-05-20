@@ -87,18 +87,18 @@ func TestToolCalls(t *testing.T) {
 	send(`{"jsonrpc":"2.0","method":"notifications/initialized"}`)
 	readResponse() // initialize response
 
-	// Test Tool 2: init_addon_workspace
-	send(`{"jsonrpc":"2.0","id":10,"method":"tools/call","params":{"name":"init_addon_workspace","arguments":{"addon_name":"TestAddon","addon_description":"A test addon","needs_custom_blocks_items_entities":true,"needs_ui_menus":true,"scripting_language":"javascript","server_version":"1.21.60"}}}`)
+	// Test Tool 2: scaffold_addon (replaces init_addon_workspace)
+	send(`{"jsonrpc":"2.0","id":10,"method":"tools/call","params":{"name":"scaffold_addon","arguments":{"addon_name":"TestAddon","addon_description":"A test addon","needs_custom_blocks_items_entities":true,"needs_ui_menus":true,"scripting_language":"javascript","server_version":"1.21.60","mcdev_path":"C:\\test"}}}`)
 	resp2 := readResponse()
 	fmt.Println("Tool 2 response:", resp2)
 	if !strings.Contains(resp2, "TestAddon") {
-		t.Error("init_addon_workspace response missing addon name")
+		t.Error("scaffold_addon response missing addon name")
 	}
 	if !strings.Contains(resp2, "@minecraft/server-ui") {
-		t.Error("init_addon_workspace response missing server-ui dependency")
+		t.Error("scaffold_addon response missing server-ui dependency")
 	}
 	if !strings.Contains(resp2, "resource_pack_manifest") {
-		t.Error("init_addon_workspace response missing RP manifest")
+		t.Error("scaffold_addon response missing RP manifest")
 	}
 
 	// Test Tool 4: sync_manifest_dependencies with valid module

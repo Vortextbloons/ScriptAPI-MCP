@@ -1,13 +1,10 @@
 package tools
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
-
-	mcp "github.com/metoro-io/mcp-golang"
 
 	"github.com/isaac-org/Script-API-Helper-MCP/internal/manifest"
 )
@@ -25,19 +22,6 @@ type InspectAddonWorkspaceOutput struct {
 	SourceEntrypoint string   `json:"source_entrypoint,omitempty"`
 	Modules          []string `json:"modules"`
 	Warnings         []string `json:"warnings,omitempty"`
-}
-
-func RegisterInspectAddonWorkspace(server *mcp.Server) error {
-	return server.RegisterTool("inspect_addon_workspace",
-		"Inspects a Bedrock addon workspace and returns structure, language, entrypoints, and dependencies.",
-		func(args InspectAddonWorkspaceInput) (*mcp.ToolResponse, error) {
-			out, err := inspectAddonWorkspace(args.ProjectPath)
-			if err != nil {
-				return toolErrorResponse("WORKSPACE_INSPECT_FAILED", err.Error(), false), nil
-			}
-			b, _ := json.MarshalIndent(out, "", "  ")
-			return mcp.NewToolResponse(mcp.NewTextContent(string(b))), nil
-		})
 }
 
 func inspectAddonWorkspace(projectPath string) (*InspectAddonWorkspaceOutput, error) {

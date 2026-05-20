@@ -4,6 +4,11 @@ package snippets
 type SnippetDefinition struct {
 	Type            string
 	Description     string
+	Category        string
+	Complexity      string
+	Tags            []string
+	Related         []string
+	Notes           []string
 	JavaScript      string
 	TypeScript      string
 	JSImports       []string

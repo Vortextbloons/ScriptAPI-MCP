@@ -8,7 +8,7 @@
   <img src="https://img.shields.io/badge/Bedrock-Script%20API-FF6B35?style=flat-square" alt="Bedrock Script API">
 </p>
 
-An **MCP (Model Context Protocol) server** for Minecraft Bedrock Script API development. Provides a toolkit of **21 tools** that help AI assistants scaffold addons, validate manifests, search API types, detect breaking changes, generate UUIDs, package deployments, inspect workspaces, and produce boilerplate code — all backed by live npm registry data.
+An **MCP (Model Context Protocol) server** for Minecraft Bedrock Script API development. Provides a toolkit of **22 tools** that help AI assistants scaffold addons, validate manifests, search API types, detect breaking changes, generate UUIDs, package deployments, inspect workspaces, and produce boilerplate code — all backed by live npm registry data.
 
 All error responses are **structured JSON** with machine-readable codes, retryability flags, and actionable suggestions.
 
@@ -38,6 +38,7 @@ All error responses are **structured JSON** with machine-readable codes, retryab
 | `diff_script_api_versions` | Diffs the API surface between two module versions |
 | `list_api_versions` | Lists available npm publish versions with channel filtering |
 | `troubleshoot_pack_not_loading` | Diagnoses common reasons packs fail to load |
+| `list_code_patterns` | Lists available code generation patterns with metadata and category filtering |
 | `project_health_score` | Calculates a health score and highlights risky areas |
 
 ---
@@ -136,19 +137,42 @@ Standalone UUID generator with three operating modes:
 
 Output formats: `plain` (list), `assignments` (slot = uuid), `json` (structured).
 
-### `generate_bedrock_snippet`
-Boilerplate code for 6 common patterns, in JavaScript or TypeScript:
+### `generate_code`
+Unified boilerplate generator for 18 patterns in JavaScript or TypeScript. Supports event subscriptions, custom components, UI forms, and advanced runtime patterns. All patterns include metadata (category, complexity, tags) for AI discovery.
+
+**Event snippets (simple):**
 
 | Snippet | Description |
 |---------|-------------|
 | `beforeEvents.playerBreakBlock` | Block break event handler |
 | `afterEvents.playerSpawn` | Player spawn event handler |
-| `worldInitialize` | Custom component registration |
+| `worldInitialize` | Custom component registration (world init) |
 | `custom_item_template` | Item component with `onUse` |
 | `custom_block_template` | Block component with `onPlayerDestroy` |
 | `script_event_handler` | Script event receive handler |
 
-TypeScript output uses `import type`, explicit event parameter types, and `: void` return annotations.
+**UI forms:** `action_form`, `modal_form`, `message_form` (via `generate_ui_form`)
+
+**Custom item:** `custom_item` (via `generate_custom_item`)
+
+**Advanced patterns (complex):**
+
+| Snippet | Category | Complexity | Description |
+|---------|----------|------------|-------------|
+| `runtime.plugin_registry` | runtime | complex | Event-dispatching plugin system with typed hooks |
+| `ui.action_form_wizard` | ui | complex | Multi-step modal state machine with push-based steps |
+| `interaction.item_interaction_handler` | ui | complex | Block-click → UI → item modification pipeline |
+| `runtime.background_scheduler` | runtime | moderate | Tick-budgeted background task scheduler |
+| `storage.dynamic_property_store` | storage | moderate | Schema-versioned JSON blob storage with migration |
+| `balance.scaled_value` | balance | moderate | Formula-based scaling with weighted level rolling |
+| `command.custom_slash_command` | command | moderate | Custom command registration with permissions |
+| `runtime.profile_cache` | runtime | simple | Player-scoped data cache with TTL invalidation |
+| `runtime.cooldown_manager` | runtime | simple | Tick-based cooldown with prefix cleanup |
+| `storage.world_config` | storage | simple | World-level JSON config with defaults |
+| `equipment.equipment_scanner` | equipment | simple | Scan all equipment slots with data extraction |
+| `item.lore_builder` | item | simple | Color-coded lore with word wrap and block replace |
+
+TypeScript output uses `import type`, explicit event parameter types, and `: void` return annotations. Use `list_code_patterns` to discover patterns by category, complexity, or module.
 
 ### `generate_ui_form`
 Generates `@minecraft/server-ui` form boilerplate. Supports three form types:
@@ -195,68 +219,21 @@ Diagnoses common reasons Bedrock packs fail to load. Runs workspace validation a
 - Compatible module versions
 - Packs deployed to correct `com.mojang` directories
 
+### `list_code_patterns`
+Discovers available `generate_code` pattern types with metadata filtering. AI-friendly tool that lets you browse the catalog before generating code.
+
+**Input filters** (all optional):
+- `category` — Filter by: `runtime`, `ui`, `storage`, `equipment`, `item`, `balance`, `command`
+- `complexity` — Filter by: `simple`, `moderate`, `complex`
+- `module` — Filter by required module, e.g. `@minecraft/server-ui`
+- `query` — Free-text search in type key, description, and tags
+
+Returns a JSON array of matching patterns with type, description, category, complexity, tags, required_modules, and related patterns.
+
 ### `project_health_score`
 Calculates an addon workspace health score (0-100) from validation findings. Returns a status label (`excellent`, `good`, `fair`, `poor`) and the full findings list. Each error costs 25 points, each warning costs 10.
 
 ---
-
-## Architecture
-
-```
-cmd/script-api-helper/main.go     ← entry point
-└── internal/
-    ├── app/app.go                ← lifecycle (signal handling)
-    ├── server/server.go          ← MCP tool registration hub
-    ├── tools/*.go                ← 21 tool handlers (one file per tool)
-    │   ├── resolve_api_env.go
-    │   ├── init_addon_workspace.go
-    │   ├── search_api_types.go
-    │   ├── search_api_members.go
-    │   ├── sync_manifest_deps.go
-    │   ├── scaffold_addon.go
-    │   ├── inspect_addon_workspace.go
-    │   ├── validate_addon_workspace.go
-    │   ├── package_addon.go
-    │   ├── deploy_addon.go
-    │   ├── version_info.go
-    │   ├── generate_uuid.go
-    │   ├── generate_bedrock_snippet.go
-    │   ├── generate_ui_form.go
-    │   ├── generate_custom_item.go
-    │   ├── manifest_doctor.go
-    │   ├── manifest_fixup.go
-    │   ├── diff_script_api_versions.go
-    │   ├── list_api_versions.go
-    │   ├── troubleshoot_pack_not_loading.go
-    │   ├── project_health_score.go
-    │   ├── validation.go
-    │   └── errors.go
-    ├── models/types.go           ← shared domain types
-    ├── manifest/
-    │   ├── generator.go          ← manifest creation, UUIDs, starter code
-    │   └── validator.go          ← module allowlist/blocklist
-    ├── manifestdoctor/           ← doctor + fixer engine
-    │   ├── models.go             ← finding/fixup types
-    │   ├── rules.go              ← 21 rule checks
-    │   ├── doctor.go             ← two-pass diagnostic runner
-    │   └── fixer.go              ← auto-fix application
-    ├── snippets/                 ← boilerplate generator
-    │   ├── templates.go          ← 6 snippet definitions (JS + TS)
-    │   └── generator.go          ← template rendering + import building
-    ├── apidiff/                  ← breaking-change detection
-    │   ├── models.go             ← symbol table types
-    │   ├── extract.go            ← .d.ts → symbol table (regex)
-    │   └── compare.go            ← diff + rename heuristic
-    ├── npm/                      ← npm registry client
-    │   ├── client.go             ← HTTP + tarball + caching
-    │   ├── parser.go             ← version resolution, .d.ts extraction
-    │   ├── validator.go          ← local node_modules validation
-    │   ├── version_lookup.go     ← exact version + concrete list helpers
-    │   └── cache.go              ← TTL-based in-memory cache
-    ├── resources/guardrails.go   ← static strict-rules + module guide resources
-    └── version/version.go        ← name + current version
-```
-
 ### MCP Resources
 
 The server exposes these read-only resources:

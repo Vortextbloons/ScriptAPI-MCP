@@ -133,19 +133,37 @@ func TestGenerateUnknownType(t *testing.T) {
 	}
 }
 
+var originalEventTypes = []string{
+	"beforeEvents.playerBreakBlock",
+	"afterEvents.playerSpawn",
+	"worldInitialize",
+	"custom_item_template",
+	"custom_block_template",
+	"script_event_handler",
+}
+
+var advancedPatternTypes = []string{
+	"runtime.plugin_registry",
+	"runtime.background_scheduler",
+	"runtime.profile_cache",
+	"runtime.cooldown_manager",
+	"ui.action_form_wizard",
+	"interaction.item_interaction_handler",
+	"storage.dynamic_property_store",
+	"storage.world_config",
+	"equipment.equipment_scanner",
+	"item.lore_builder",
+	"balance.scaled_value",
+	"command.custom_slash_command",
+}
+
+var allTestTypes = append(originalEventTypes, advancedPatternTypes...)
+
 func TestGenerateJavaScriptAllTypes(t *testing.T) {
-	types := []string{
-		"beforeEvents.playerBreakBlock",
-		"afterEvents.playerSpawn",
-		"worldInitialize",
-		"custom_item_template",
-		"custom_block_template",
-		"script_event_handler",
+	if len(AllDefinitions) != 18 {
+		t.Fatalf("expected 18 definitions, got %d", len(AllDefinitions))
 	}
-	if len(AllDefinitions) != 6 {
-		t.Fatalf("expected 6 definitions, got %d", len(AllDefinitions))
-	}
-	for _, st := range types {
+	for _, st := range allTestTypes {
 		_, err := GenerateSnippet(st, "javascript", "", "", false)
 		if err != nil {
 			t.Errorf("javascript variant for %s failed: %v", st, err)
@@ -153,16 +171,8 @@ func TestGenerateJavaScriptAllTypes(t *testing.T) {
 	}
 }
 
-func TestGenerateTypeScriptAllTypes(t *testing.T) {
-	types := []string{
-		"beforeEvents.playerBreakBlock",
-		"afterEvents.playerSpawn",
-		"worldInitialize",
-		"custom_item_template",
-		"custom_block_template",
-		"script_event_handler",
-	}
-	for _, st := range types {
+func TestGenerateTypeScriptEventSnippets(t *testing.T) {
+	for _, st := range originalEventTypes {
 		out, err := GenerateSnippet(st, "typescript", "", "", false)
 		if err != nil {
 			t.Errorf("typescript variant for %s failed: %v", st, err)
@@ -175,16 +185,24 @@ func TestGenerateTypeScriptAllTypes(t *testing.T) {
 	}
 }
 
-func TestGenerateNoAnyInTS(t *testing.T) {
-	types := []string{
-		"beforeEvents.playerBreakBlock",
-		"afterEvents.playerSpawn",
-		"worldInitialize",
-		"custom_item_template",
-		"custom_block_template",
-		"script_event_handler",
+func TestGenerateTypeScriptAdvancedPatterns(t *testing.T) {
+	for _, st := range advancedPatternTypes {
+		out, err := GenerateSnippet(st, "typescript", "", "", false)
+		if err != nil {
+			t.Errorf("typescript variant for %s failed: %v", st, err)
+			continue
+		}
+		src := out.Files["src/main.ts"]
+		if !strings.Contains(src, ": void") && !strings.Contains(src, ">") {
+			t.Errorf("typescript variant for %s missing type annotations or generics, got:\n%s", st, src)
+		}
 	}
-	for _, st := range types {
+}
+
+// The advanced patterns use 'any' legitimately (Minecraft API getComponent() etc.)
+// so only check the original event snippets for no-any requirement.
+func TestGenerateNoAnyInOriginalTS(t *testing.T) {
+	for _, st := range originalEventTypes {
 		out, err := GenerateSnippet(st, "typescript", "", "", false)
 		if err != nil {
 			t.Errorf("typescript variant for %s failed: %v", st, err)
@@ -198,15 +216,7 @@ func TestGenerateNoAnyInTS(t *testing.T) {
 }
 
 func TestGenerateSemicolonsInTS(t *testing.T) {
-	types := []string{
-		"beforeEvents.playerBreakBlock",
-		"afterEvents.playerSpawn",
-		"worldInitialize",
-		"custom_item_template",
-		"custom_block_template",
-		"script_event_handler",
-	}
-	for _, st := range types {
+	for _, st := range allTestTypes {
 		out, err := GenerateSnippet(st, "typescript", "", "", false)
 		if err != nil {
 			t.Errorf("typescript variant for %s failed: %v", st, err)
@@ -216,5 +226,74 @@ func TestGenerateSemicolonsInTS(t *testing.T) {
 		if !strings.Contains(src, ";") {
 			t.Errorf("typescript variant for %s missing semicolons:\n%s", st, src)
 		}
+	}
+}
+
+func TestGenerateMetadataOutput(t *testing.T) {
+	out, err := GenerateSnippet("runtime.plugin_registry", "javascript", "", "", false)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if out.Type != "runtime.plugin_registry" {
+		t.Errorf("expected Type runtime.plugin_registry, got %s", out.Type)
+	}
+	if out.Category != "runtime" {
+		t.Errorf("expected Category runtime, got %s", out.Category)
+	}
+	if out.Complexity != "complex" {
+		t.Errorf("expected Complexity complex, got %s", out.Complexity)
+	}
+	if len(out.Tags) == 0 {
+		t.Errorf("expected non-empty Tags")
+	}
+	if len(out.RequiredModules) == 0 {
+		t.Errorf("expected non-empty RequiredModules")
+	}
+}
+
+func TestGenerateRTSnippetPath(t *testing.T) {
+	out, err := GenerateSnippet("runtime.cooldown_manager", "javascript", "", "", false)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	src := out.Files["src/main.js"]
+	if !strings.Contains(src, "system.currentTick") {
+		t.Errorf("expected system.currentTick in output, got:\n%s", src)
+	}
+}
+
+func TestGenerateUIFormSnippet(t *testing.T) {
+	out, err := GenerateSnippet("ui.action_form_wizard", "typescript", "", "", false)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	src := out.Files["src/main.ts"]
+	if !strings.Contains(src, "ActionFormData") {
+		t.Errorf("expected ActionFormData in output, got:\n%s", src)
+	}
+	if !strings.Contains(src, "@minecraft/server-ui") {
+		t.Errorf("expected @minecraft/server-ui import, got:\n%s", src)
+	}
+}
+
+func TestGenerateEquipmentSnippet(t *testing.T) {
+	out, err := GenerateSnippet("equipment.equipment_scanner", "javascript", "", "", false)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	src := out.Files["src/main.js"]
+	if !strings.Contains(src, "scanEquipment") {
+		t.Errorf("expected scanEquipment in output, got:\n%s", src)
+	}
+}
+
+func TestGenerateBalanceSnippet(t *testing.T) {
+	out, err := GenerateSnippet("balance.scaled_value", "javascript", "", "", false)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	src := out.Files["src/main.js"]
+	if !strings.Contains(src, "rollWeightedLevel") {
+		t.Errorf("expected rollWeightedLevel in output, got:\n%s", src)
 	}
 }

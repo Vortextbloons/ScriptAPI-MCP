@@ -11,6 +11,12 @@ type SnippetOutput struct {
 	RequiredModules []string          `json:"required_modules"`
 	Notes           []string          `json:"notes"`
 	Imports         []string          `json:"imports"`
+	Type            string            `json:"type"`
+	Description     string            `json:"description"`
+	Category        string            `json:"category"`
+	Complexity      string            `json:"complexity"`
+	Tags            []string          `json:"tags"`
+	Related         []string          `json:"related"`
 }
 
 // GenerateSnippet generates a code snippet for the given type and language.
@@ -84,12 +90,16 @@ func GenerateSnippet(snippetType, language, name, moduleVersion string, includeC
 		filePath: fullSource.String(),
 	}
 
-	notes := make([]string, 0)
-
 	return &SnippetOutput{
 		Files:           files,
 		RequiredModules: definition.RequiredModules,
-		Notes:           notes,
+		Notes:           definition.Notes,
 		Imports:         allImports,
+		Type:            definition.Type,
+		Description:     definition.Description,
+		Category:        definition.Category,
+		Complexity:      definition.Complexity,
+		Tags:            definition.Tags,
+		Related:         definition.Related,
 	}, nil
 }

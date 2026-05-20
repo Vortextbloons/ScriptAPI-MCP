@@ -1,14 +1,11 @@
 package tools
 
 import (
-	"encoding/json"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
-
-	mcp "github.com/metoro-io/mcp-golang"
 )
 
 type DeployAddonInput struct {
@@ -22,19 +19,6 @@ type DeployAddonInput struct {
 type DeployAddonOutput struct {
 	Operations []string `json:"operations"`
 	DryRun     bool     `json:"dry_run"`
-}
-
-func RegisterDeployAddon(server *mcp.Server) error {
-	return server.RegisterTool("deploy_addon",
-		"Deploys behavior/resource packs to Minecraft development folders.",
-		func(args DeployAddonInput) (*mcp.ToolResponse, error) {
-			out, err := deployAddon(args)
-			if err != nil {
-				return toolErrorResponse("DEPLOY_FAILED", err.Error(), false), nil
-			}
-			b, _ := json.MarshalIndent(out, "", "  ")
-			return mcp.NewToolResponse(mcp.NewTextContent(string(b))), nil
-		})
 }
 
 func deployAddon(args DeployAddonInput) (*DeployAddonOutput, error) {
