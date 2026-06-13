@@ -199,6 +199,8 @@ Packages behavior/resource packs into a `.mcaddon` archive, deploys to Minecraft
 
 A pack is "found" when its `manifest.json` exists. Each pack is detected independently — a project can have the BP at the root and the RP at `static/rp/`. The resolved layout is reported under `layout` in the response.
 
+**.mcaddon top-level layout:** When the resolved source folder's basename doesn't match a conventional pack name (e.g. `static/bp` is used but the BP is conventionally `behavior_pack`), the tool rewrites the top-level folder in the archive. Defaults come from the (dev-suffix-applied) manifest `header.name` so the .mcaddon has friendly folders like `Tau Gem Upgrades BP/manifest.json` and `Tau Gem Upgrades RP/manifest.json`. Override with `bp_pack_name` / `rp_pack_name`. The compiled scripts source lands at `<bp_pack_name>/scripts/...`. Set `keep_layout=true` to disable the rewrite and preserve the source folder structure verbatim in the archive.
+
 **Manifest suffix (`manifest_suffix`):** Pass `manifest_suffix=true` to ensure `header.name` ends with `-dev`; pass `false` to strip `-dev` for a production build. Omit the field (or pass `null`) to auto-detect from the current `header.name` (a `-dev` suffix implies dev). A staging copy of the workspace is used during the operation and the source manifests are restored on completion — your working tree is never mutated. The response includes a `dev_suffix` block reporting the original/final name and whether it changed for each pack. The `.mcaddon` filename gets a `-dev` suffix in dev mode (e.g. `MyAddon-dev.mcaddon`).
 
 ---

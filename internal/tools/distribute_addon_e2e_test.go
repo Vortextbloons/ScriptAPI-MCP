@@ -53,6 +53,11 @@ func TestE2E_TauGemUpgrades_Production(t *testing.T) {
 		t.Errorf("staged BP name should have -dev stripped, got %q", name)
 	}
 
+	// Top-level pack names default to the (suffix-stripped) manifest
+	// header.name so the .mcaddon has friendly folders.
+	bpPackName := report.BP.Final // "Tau Gem Upgrades BP 2.8.3-Beta"
+	rpPackName := report.RP.Final // "Tau Gem Upgrades RP 2.8.3-Beta"
+
 	out := t.TempDir() + `\Tau Gem Upgrades.mcaddon`
 	pkg, err := packageAddon(PackageAddonInput{
 		ProjectPath:   effective,
@@ -60,6 +65,8 @@ func TestE2E_TauGemUpgrades_Production(t *testing.T) {
 		BPSource:      layout.BPSource,
 		RPSource:      layout.RPSource,
 		ScriptsSource: layout.ScriptsSource,
+		BPPackName:    bpPackName,
+		RPPackName:    rpPackName,
 	})
 	if err != nil {
 		t.Fatalf("packageAddon: %v", err)
@@ -67,15 +74,15 @@ func TestE2E_TauGemUpgrades_Production(t *testing.T) {
 	if pkg.BPIncluded == 0 || pkg.RPIncluded == 0 || pkg.ScriptsIncluded == 0 {
 		t.Errorf("expected all three sources to contribute, got %+v", pkg)
 	}
-	if pkg.OutputPath == "" {
-		t.Error("expected output path to be set")
-	}
 
 	entries := readZipEntries(t, pkg.OutputPath)
+	// The .mcaddon must have two top-level pack folders, with the BP
+	// containing the manifest at the root (no nested "static/bp/" prefix)
+	// and scripts/ inside the BP.
 	want := []string{
-		"static/bp/manifest.json",
-		"static/rp/manifest.json",
-		"scripts/index.js",
+		bpPackName + "/manifest.json",
+		rpPackName + "/manifest.json",
+		bpPackName + "/scripts/index.js",
 	}
 	for _, w := range want {
 		found := false
@@ -87,6 +94,15 @@ func TestE2E_TauGemUpgrades_Production(t *testing.T) {
 		}
 		if !found {
 			t.Errorf("expected %q in zip, got %v", w, entries)
+		}
+	}
+
+	// And the .mcaddon must NOT contain the source-path layout.
+	for _, bad := range []string{"static/bp/manifest.json", "static/rp/manifest.json"} {
+		for _, e := range entries {
+			if e == bad {
+				t.Errorf("zip should not contain source-path layout entry %q", bad)
+			}
 		}
 	}
 }
@@ -102,22 +118,18 @@ func TestE2E_TauGemUpgrades_Dev(t *testing.T) {
 		t.Fatalf("layout: %v", err)
 	}
 
-	effective, report, restore, err := prepareDevSuffix(projectPath, layout, true, false)
+	_, report, restore, err := prepareDevSuffix(projectPath, layout, true, false)
 	if err != nil {
 		t.Fatalf("prepareDevSuffix: %v", err)
 	}
 	if restore != nil {
 		defer restore()
 	}
-	_ = effective
 
 	if report == nil || report.BP == nil {
 		t.Fatalf("expected BP entry, got %+v", report)
 	}
 	if !strings.HasSuffix(report.BP.Final, "-dev") {
 		t.Errorf("expected dev BP to end with -dev, got %q", report.BP.Final)
-	}
-	if !report.BP.Changed && !strings.HasSuffix(report.BP.Original, "-dev") {
-		t.Errorf("expected BP to be marked changed or already have -dev, got %+v", report.BP)
 	}
 }

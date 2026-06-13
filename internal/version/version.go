@@ -1,6 +1,6 @@
 package version
 
-const Current = "1.9.4"
+const Current = "1.9.5"
 const Name = "Script-API-Helper-MCP"
 
 // DisplayName returns the MCP server name with the current version attached.

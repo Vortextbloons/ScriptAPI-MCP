@@ -45,13 +45,16 @@ type DistributeAddonInput struct {
 	Action         string `json:"action" mcp:"description='Operation: package (create .mcaddon, default), deploy (copy to com.mojang), or both'"`
 	OutputPath     string `json:"output_path" mcp:"description='package/both mode: path for .mcaddon output file'"`
 	MCDevPath      string `json:"mcdev_path" mcp:"description='deploy/both mode: path to com.mojang folder'"`
-	BPDestName     string `json:"bp_dest_name" mcp:"description='deploy/both mode: destination behavior pack folder name'"`
-	RPDestName     string `json:"rp_dest_name" mcp:"description='deploy/both mode: destination resource pack folder name'"`
+	BPDestName     string `json:"bp_dest_name" mcp:"description='deploy/both mode: destination behavior pack folder name (defaults to the BP source folder name)'"`
+	RPDestName     string `json:"rp_dest_name" mcp:"description='deploy/both mode: destination resource pack folder name (defaults to the RP source folder name)'"`
+	BPPackName     string `json:"bp_pack_name" mcp:"description='package/both mode: top-level folder name written into the .mcaddon for the BP. Defaults to the BP manifest header.name (with manifest_suffix applied).'"`
+	RPPackName     string `json:"rp_pack_name" mcp:"description='package/both mode: top-level folder name written into the .mcaddon for the RP. Defaults to the RP manifest header.name (with manifest_suffix applied).'"`
+	KeepLayout     bool   `json:"keep_layout" mcp:"description='package/both mode: if true, keep the source folder layout inside the .mcaddon (e.g. static/bp/... at root). Default false rewrites the top-level folder to <bp_pack_name>/<rp_pack_name>, which is what Bedrock expects.'"`
 	DryRun         bool   `json:"dry_run" mcp:"description='If true, previews the operation without writing files'"`
 	BPSource       string `json:"bp_source" mcp:"description='Override BP source folder relative to project_path (e.g. static/bp). Auto-detected if empty.'"`
 	RPSource       string `json:"rp_source" mcp:"description='Override RP source folder relative to project_path (e.g. static/rp). Auto-detected if empty.'"`
 	ScriptsSource  string `json:"scripts_source" mcp:"description='Folder whose contents are merged into the BP at scripts/ during packaging (e.g. dist). Auto-detected if empty; skipped if not found.'"`
-	ManifestSuffix *bool  `json:"manifest_suffix" mcp:"description='Required for package/both. Ask the user first: true adds -dev to header.name and .mcaddon filename; false strips -dev for production. Source manifests are never modified.'"`
+	ManifestSuffix *bool  `json:"manifest_suffix" mcp:"description='If true, ensure header.name ends with -dev; if false, strip -dev. Omit (or pass null) to auto-detect from current header.name. Source manifests are restored after the operation.'"`
 }
 
 type devSuffixEntry struct {
@@ -107,12 +110,14 @@ func handleDistributeAddon(args DistributeAddonInput) (*mcp.ToolResponse, error)
 	var report *devSuffixReport
 	var restore func()
 	var devPack bool
+	var devPackSet bool
 
 	if packagesAddon {
 		if args.ManifestSuffix == nil {
 			return toolErrorResponse("INVALID_INPUT", "Ask the user whether this is a dev pack, then pass manifest_suffix=true or manifest_suffix=false", false), nil
 		}
 		devPack = *args.ManifestSuffix
+		devPackSet = true
 		effectivePath, report, restore, err = prepareDevSuffix(projectPath, layout, devPack, args.DryRun)
 		if err != nil {
 			return toolErrorResponse("MANIFEST_PATCH_FAILED", err.Error(), false), nil
@@ -124,8 +129,35 @@ func handleDistributeAddon(args DistributeAddonInput) (*mcp.ToolResponse, error)
 		defer restore()
 	}
 
+	// Resolve top-level pack names for the .mcaddon. Defaults come from the
+	// (possibly dev-suffix-stripped) manifest header.name so the friendly
+	// name is reflected in the archive.
+	bpPackName := strings.TrimSpace(args.BPPackName)
+	if bpPackName == "" {
+		bpPackName = defaultPackName(effectivePath, layout.BPSource, "behavior_pack")
+	}
+	rpPackName := strings.TrimSpace(args.RPPackName)
+	if rpPackName == "" {
+		rpPackName = defaultPackName(effectivePath, layout.RPSource, "resource_pack")
+	}
+
+	// Resolve BP/RP deploy destination names. Defaults to the source folder
+	// name (matches the user's existing deploy.mjs behavior).
+	bpDestName := strings.TrimSpace(args.BPDestName)
+	if bpDestName == "" {
+		bpDestName = defaultDeployFolderName(layout.BPSource, "AddonBP")
+	}
+	rpDestName := strings.TrimSpace(args.RPDestName)
+	if rpDestName == "" {
+		rpDestName = defaultDeployFolderName(layout.RPSource, "AddonRP")
+	}
+
 	var results map[string]any
-	results = map[string]any{"layout": layout}
+	results = map[string]any{
+		"layout":       layout,
+		"bp_pack_name": bpPackName,
+		"rp_pack_name": rpPackName,
+	}
 
 	switch action {
 	case "deploy":
@@ -134,14 +166,14 @@ func handleDistributeAddon(args DistributeAddonInput) (*mcp.ToolResponse, error)
 			return toolErrorResponse("INVALID_INPUT", "mcdev_path is required for deploy mode", false), nil
 		}
 		deployArgs := DeployAddonInput{
-			ProjectPath:    effectivePath,
-			MCDevPath:      mcdev,
-			BPSource:       layout.BPSource,
-			RPSource:       layout.RPSource,
-			ScriptsSource:  layout.ScriptsSource,
-			BPDestName:     args.BPDestName,
-			RPDestName:     args.RPDestName,
-			DryRun:         args.DryRun,
+			ProjectPath:   effectivePath,
+			MCDevPath:     mcdev,
+			BPSource:      layout.BPSource,
+			RPSource:      layout.RPSource,
+			ScriptsSource: layout.ScriptsSource,
+			BPDestName:    bpDestName,
+			RPDestName:    rpDestName,
+			DryRun:        args.DryRun,
 		}
 		out, err := deployAddon(deployArgs)
 		if err != nil {
@@ -155,7 +187,9 @@ func handleDistributeAddon(args DistributeAddonInput) (*mcp.ToolResponse, error)
 		if outputPath == "" {
 			return toolErrorResponse("INVALID_INPUT", "output_path is required for package mode", false), nil
 		}
-		outputPath = applyDevSuffixToOutputPath(outputPath, devPack)
+		if devPackSet {
+			outputPath = applyDevSuffixToOutputPath(outputPath, devPack)
+		}
 		mcdev := strings.TrimSpace(args.MCDevPath)
 		if mcdev == "" {
 			return toolErrorResponse("INVALID_INPUT", "mcdev_path is required for deploy mode", false), nil
@@ -167,6 +201,9 @@ func handleDistributeAddon(args DistributeAddonInput) (*mcp.ToolResponse, error)
 			BPSource:      layout.BPSource,
 			RPSource:      layout.RPSource,
 			ScriptsSource: layout.ScriptsSource,
+			BPPackName:    bpPackName,
+			RPPackName:    rpPackName,
+			KeepLayout:    args.KeepLayout,
 			DryRun:        args.DryRun,
 		}
 		pkgOut, err := packageAddon(pkgArgs)
@@ -180,8 +217,8 @@ func handleDistributeAddon(args DistributeAddonInput) (*mcp.ToolResponse, error)
 			BPSource:      layout.BPSource,
 			RPSource:      layout.RPSource,
 			ScriptsSource: layout.ScriptsSource,
-			BPDestName:    args.BPDestName,
-			RPDestName:    args.RPDestName,
+			BPDestName:    bpDestName,
+			RPDestName:    rpDestName,
 			DryRun:        args.DryRun,
 		}
 		depOut, err := deployAddon(deployArgs)
@@ -198,13 +235,18 @@ func handleDistributeAddon(args DistributeAddonInput) (*mcp.ToolResponse, error)
 		if outputPath == "" {
 			return toolErrorResponse("INVALID_INPUT", "output_path is required for package mode", false), nil
 		}
-		outputPath = applyDevSuffixToOutputPath(outputPath, devPack)
+		if devPackSet {
+			outputPath = applyDevSuffixToOutputPath(outputPath, devPack)
+		}
 		pkgArgs := PackageAddonInput{
 			ProjectPath:   effectivePath,
 			OutputPath:    outputPath,
 			BPSource:      layout.BPSource,
 			RPSource:      layout.RPSource,
 			ScriptsSource: layout.ScriptsSource,
+			BPPackName:    bpPackName,
+			RPPackName:    rpPackName,
+			KeepLayout:    args.KeepLayout,
 			DryRun:        args.DryRun,
 		}
 		out, err := packageAddon(pkgArgs)
@@ -221,6 +263,48 @@ func handleDistributeAddon(args DistributeAddonInput) (*mcp.ToolResponse, error)
 
 	b, _ := json.MarshalIndent(results, "", "  ")
 	return mcp.NewToolResponse(mcp.NewTextContent(string(b))), nil
+}
+
+// defaultPackName returns the manifest header.name for packSource if it can
+// be read, otherwise fallback. The name is read from the staged copy if
+// present (so dev-suffix stripping is reflected), else from the source.
+func defaultPackName(projectPath, packSource, fallback string) string {
+	if packSource == "" {
+		return fallback
+	}
+	mp := filepath.Join(projectPath, filepath.FromSlash(packSource), "manifest.json")
+	if !fileExists(mp) {
+		return fallback
+	}
+	raw, err := os.ReadFile(mp)
+	if err != nil {
+		return fallback
+	}
+	m, err := manifest.ParseManifest(string(raw))
+	if err != nil {
+		return fallback
+	}
+	name := strings.TrimSpace(m.Header.Name)
+	if name == "" {
+		return fallback
+	}
+	return name
+}
+
+// defaultDeployFolderName returns the basename of the pack source folder
+// (e.g. "static/bp" -> "bp") so the deployed folder matches the source
+// layout, falling back to fallback when the source is empty.
+func defaultDeployFolderName(packSource, fallback string) string {
+	if packSource == "" {
+		return fallback
+	}
+	normalized := filepath.ToSlash(packSource)
+	parts := strings.Split(normalized, "/")
+	last := parts[len(parts)-1]
+	if strings.TrimSpace(last) == "" {
+		return fallback
+	}
+	return last
 }
 
 // resolvePackLayout determines the BP/RP/scripts source folders relative to

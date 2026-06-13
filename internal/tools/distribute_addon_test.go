@@ -438,6 +438,8 @@ func TestPackageAddon_StaticLayout_WithScriptsSource(t *testing.T) {
 		BPSource:      "static/bp",
 		RPSource:      "static/rp",
 		ScriptsSource: "dist",
+		BPPackName:    "Tau Gem Upgrades BP",
+		RPPackName:    "Tau Gem Upgrades RP",
 	})
 	if err != nil {
 		t.Fatalf("packageAddon failed: %v", err)
@@ -445,9 +447,16 @@ func TestPackageAddon_StaticLayout_WithScriptsSource(t *testing.T) {
 	if pkg.BPIncluded == 0 || pkg.RPIncluded == 0 || pkg.ScriptsIncluded == 0 {
 		t.Errorf("expected all three sources to contribute, got %+v", pkg)
 	}
+	if !pkg.RewroteLayout {
+		t.Errorf("expected RewroteLayout=true, got %+v", pkg)
+	}
 
 	entries := readZipEntries(t, out)
-	wantScripts := []string{"static/bp/manifest.json", "static/rp/manifest.json", "scripts/index.js"}
+	wantScripts := []string{
+		"Tau Gem Upgrades BP/manifest.json",
+		"Tau Gem Upgrades RP/manifest.json",
+		"Tau Gem Upgrades BP/scripts/index.js",
+	}
 	for _, w := range wantScripts {
 		found := false
 		for _, e := range entries {
@@ -458,6 +467,80 @@ func TestPackageAddon_StaticLayout_WithScriptsSource(t *testing.T) {
 		}
 		if !found {
 			t.Errorf("expected entry %q in zip, got %v", w, entries)
+		}
+	}
+	for _, bad := range []string{"static/bp/manifest.json", "static/rp/manifest.json", "scripts/index.js"} {
+		for _, e := range entries {
+			if e == bad {
+				t.Errorf("zip should not contain source-path entry %q", bad)
+			}
+		}
+	}
+}
+
+func TestPackageAddon_KeepLayout(t *testing.T) {
+	root := t.TempDir()
+	writeManifest(t, root, "static/bp", sampleBPManifest)
+	writeManifest(t, root, "static/rp", sampleRPManifest)
+
+	out := filepath.Join(t.TempDir(), "addon.mcaddon")
+	pkg, err := packageAddon(PackageAddonInput{
+		ProjectPath: root,
+		OutputPath:  out,
+		BPSource:    "static/bp",
+		RPSource:    "static/rp",
+		KeepLayout:  true,
+	})
+	if err != nil {
+		t.Fatalf("packageAddon failed: %v", err)
+	}
+	if pkg.RewroteLayout {
+		t.Errorf("expected RewroteLayout=false when KeepLayout=true, got %+v", pkg)
+	}
+
+	entries := readZipEntries(t, out)
+	for _, want := range []string{"static/bp/manifest.json", "static/rp/manifest.json"} {
+		found := false
+		for _, e := range entries {
+			if e == want {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("expected entry %q in zip with KeepLayout, got %v", want, entries)
+		}
+	}
+}
+
+func TestPackageAddon_ConventionalLayout_NoRewrite(t *testing.T) {
+	root := t.TempDir()
+	writeManifest(t, root, "behavior_pack", sampleBPManifest)
+	writeManifest(t, root, "resource_pack", sampleRPManifest)
+
+	out := filepath.Join(t.TempDir(), "addon.mcaddon")
+	pkg, err := packageAddon(PackageAddonInput{
+		ProjectPath: root,
+		OutputPath:  out,
+	})
+	if err != nil {
+		t.Fatalf("packageAddon failed: %v", err)
+	}
+	if pkg.RewroteLayout {
+		t.Errorf("expected RewroteLayout=false on conventional layout, got %+v", pkg)
+	}
+
+	entries := readZipEntries(t, out)
+	for _, want := range []string{"behavior_pack/manifest.json", "resource_pack/manifest.json"} {
+		found := false
+		for _, e := range entries {
+			if e == want {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("expected entry %q in zip, got %v", want, entries)
 		}
 	}
 }
