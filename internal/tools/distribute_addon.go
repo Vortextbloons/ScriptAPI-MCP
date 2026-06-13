@@ -2,10 +2,17 @@ package tools
 
 import (
 	"encoding/json"
+	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 
+	"github.com/isaac-org/Script-API-Helper-MCP/internal/manifest"
+	"github.com/isaac-org/Script-API-Helper-MCP/internal/models"
 	mcp "github.com/metoro-io/mcp-golang"
 )
+
+const devSuffix = "-dev"
 
 type DistributeAddonInput struct {
 	ProjectPath string `json:"project_path" mcp:"required,description='Path to addon workspace root'"`
@@ -15,11 +22,26 @@ type DistributeAddonInput struct {
 	BPDestName  string `json:"bp_dest_name" mcp:"description='deploy/both mode: destination behavior pack folder name'"`
 	RPDestName  string `json:"rp_dest_name" mcp:"description='deploy/both mode: destination resource pack folder name'"`
 	DryRun      bool   `json:"dry_run" mcp:"description='If true, previews the operation without writing files'"`
+	DevPack     *bool  `json:"dev_pack" mcp:"description='If true, ensure header.name ends with -dev in the output; if false, strip -dev. Omit to auto-detect from current header.name (existing -dev suffix implies dev). Source manifest is restored after the operation.'"`
+}
+
+type devSuffixEntry struct {
+	Original string `json:"original"`
+	Final    string `json:"final"`
+	Changed  bool   `json:"changed"`
+}
+
+type devSuffixReport struct {
+	Requested string                  `json:"requested"`
+	Detected  *bool                   `json:"detected,omitempty"`
+	BP        *devSuffixEntry         `json:"bp,omitempty"`
+	RP        *devSuffixEntry         `json:"rp,omitempty"`
+	Source    string                  `json:"source"`
 }
 
 func RegisterDistributeAddon(server *mcp.Server) error {
 	return server.RegisterTool("distribute_addon",
-		"Packages an addon workspace into a .mcaddon archive, deploys it to Minecraft development folders, or both. Use action=package (default), deploy, or both.",
+		"Packages an addon workspace into a .mcaddon archive, deploys it to Minecraft development folders, or both. Use action=package (default), deploy, or both. Set dev_pack=true/false to add or strip the -dev suffix from manifest header.name; omit to auto-detect.",
 		func(args DistributeAddonInput) (*mcp.ToolResponse, error) {
 			return handleDistributeAddon(args)
 		})
@@ -36,6 +58,14 @@ func handleDistributeAddon(args DistributeAddonInput) (*mcp.ToolResponse, error)
 		action = "package"
 	}
 
+	effectivePath, report, restore, err := prepareDevSuffix(projectPath, args.DevPack, args.DryRun)
+	if err != nil {
+		return toolErrorResponse("MANIFEST_PATCH_FAILED", err.Error(), false), nil
+	}
+	if restore != nil {
+		defer restore()
+	}
+
 	var results map[string]any
 
 	switch action {
@@ -45,7 +75,7 @@ func handleDistributeAddon(args DistributeAddonInput) (*mcp.ToolResponse, error)
 			return toolErrorResponse("INVALID_INPUT", "mcdev_path is required for deploy mode", false), nil
 		}
 		deployArgs := DeployAddonInput{
-			ProjectPath: projectPath,
+			ProjectPath: effectivePath,
 			MCDevPath:   mcdev,
 			BPDestName:  args.BPDestName,
 			RPDestName:  args.RPDestName,
@@ -68,7 +98,7 @@ func handleDistributeAddon(args DistributeAddonInput) (*mcp.ToolResponse, error)
 		}
 
 		pkgArgs := PackageAddonInput{
-			ProjectPath: projectPath,
+			ProjectPath: effectivePath,
 			OutputPath:  outputPath,
 			DryRun:      args.DryRun,
 		}
@@ -78,7 +108,7 @@ func handleDistributeAddon(args DistributeAddonInput) (*mcp.ToolResponse, error)
 		}
 
 		deployArgs := DeployAddonInput{
-			ProjectPath: projectPath,
+			ProjectPath: effectivePath,
 			MCDevPath:   mcdev,
 			BPDestName:  args.BPDestName,
 			RPDestName:  args.RPDestName,
@@ -97,7 +127,7 @@ func handleDistributeAddon(args DistributeAddonInput) (*mcp.ToolResponse, error)
 			return toolErrorResponse("INVALID_INPUT", "output_path is required for package mode", false), nil
 		}
 		pkgArgs := PackageAddonInput{
-			ProjectPath: projectPath,
+			ProjectPath: effectivePath,
 			OutputPath:  outputPath,
 			DryRun:      args.DryRun,
 		}
@@ -108,8 +138,151 @@ func handleDistributeAddon(args DistributeAddonInput) (*mcp.ToolResponse, error)
 		results = map[string]any{"action": "package", "result": out}
 	}
 
+	if report != nil {
+		results["dev_suffix"] = report
+	}
+
 	b, _ := json.MarshalIndent(results, "", "  ")
 	return mcp.NewToolResponse(mcp.NewTextContent(string(b))), nil
 }
 
+func prepareDevSuffix(projectPath string, devPack *bool, dryRun bool) (string, *devSuffixReport, func(), error) {
+	manifestPaths := collectManifestPaths(projectPath)
+	if len(manifestPaths) == 0 {
+		return projectPath, nil, nil, nil
+	}
 
+	entries := make([]devSuffixEntry, 0, len(manifestPaths))
+	parsed := make([]models.Manifest, 0, len(manifestPaths))
+
+	hasName := false
+	for _, mp := range manifestPaths {
+		raw, err := os.ReadFile(mp)
+		if err != nil {
+			return "", nil, nil, fmt.Errorf("read %s: %w", mp, err)
+		}
+		m, err := manifest.ParseManifest(string(raw))
+		if err != nil {
+			return "", nil, nil, fmt.Errorf("parse %s: %w", mp, err)
+		}
+		parsed = append(parsed, m)
+		if strings.TrimSpace(m.Header.Name) != "" {
+			hasName = true
+		}
+	}
+
+	if !hasName {
+		return projectPath, nil, nil, nil
+	}
+
+	resolved := devPack
+	requested := "auto"
+	if resolved != nil {
+		if *resolved {
+			requested = "dev"
+		} else {
+			requested = "non-dev"
+		}
+	}
+
+	detected := detectDevFromManifests(parsed)
+	if resolved == nil {
+		d := detected
+		resolved = &d
+	}
+
+	report := &devSuffixReport{Requested: requested, Source: projectPath}
+	if devPack == nil {
+		report.Detected = &detected
+	}
+
+	anyChange := false
+	for i := range parsed {
+		current := strings.TrimSpace(parsed[i].Header.Name)
+		final := applyDevSuffix(current, *resolved)
+		entry := devSuffixEntry{Original: current, Final: final, Changed: final != current}
+		entries = append(entries, entry)
+		if i == 0 {
+			report.BP = &entries[i]
+		} else {
+			report.RP = &entries[i]
+		}
+		if entry.Changed {
+			parsed[i].Header.Name = final
+			anyChange = true
+		}
+	}
+
+	if !anyChange {
+		return projectPath, report, nil, nil
+	}
+
+	if dryRun {
+		return projectPath, report, nil, nil
+	}
+
+	stagingDir, err := os.MkdirTemp("", "script-api-helper-staging-")
+	if err != nil {
+		return "", nil, nil, fmt.Errorf("create staging dir: %w", err)
+	}
+	cleanup := func() { _ = os.RemoveAll(stagingDir) }
+
+	if err := copyDir(projectPath, stagingDir); err != nil {
+		cleanup()
+		return "", nil, nil, fmt.Errorf("stage workspace: %w", err)
+	}
+
+	for i, mp := range manifestPaths {
+		rel, err := filepath.Rel(projectPath, mp)
+		if err != nil {
+			cleanup()
+			return "", nil, nil, fmt.Errorf("relpath %s: %w", mp, err)
+		}
+		stagedPath := filepath.Join(stagingDir, rel)
+		formatted, err := manifest.FormatManifest(parsed[i])
+		if err != nil {
+			cleanup()
+			return "", nil, nil, fmt.Errorf("format %s: %w", mp, err)
+		}
+		if err := os.WriteFile(stagedPath, []byte(formatted), 0o644); err != nil {
+			cleanup()
+			return "", nil, nil, fmt.Errorf("write staged %s: %w", mp, err)
+		}
+	}
+
+	return stagingDir, report, cleanup, nil
+}
+
+func collectManifestPaths(projectPath string) []string {
+	var paths []string
+	for _, dir := range []string{"behavior_pack", "resource_pack"} {
+		mp := filepath.Join(projectPath, dir, "manifest.json")
+		if fileExists(mp) {
+			paths = append(paths, mp)
+		}
+	}
+	return paths
+}
+
+func detectDevFromManifests(manifests []models.Manifest) bool {
+	for _, m := range manifests {
+		if strings.HasSuffix(strings.TrimSpace(m.Header.Name), devSuffix) {
+			return true
+		}
+	}
+	return false
+}
+
+func applyDevSuffix(name string, isDev bool) string {
+	trimmed := strings.TrimSpace(name)
+	if isDev {
+		if strings.HasSuffix(trimmed, devSuffix) {
+			return trimmed
+		}
+		return trimmed + devSuffix
+	}
+	if strings.HasSuffix(trimmed, devSuffix) {
+		return strings.TrimSuffix(trimmed, devSuffix)
+	}
+	return trimmed
+}

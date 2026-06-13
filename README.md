@@ -35,16 +35,23 @@ All error responses are **structured JSON** with machine-readable codes, retryab
 ## Quick Start
 
 ```bash
-# Clone and build
+# Clone and build (deploys to ~/.local/bin and syncs project opencode.json)
 git clone https://github.com/isaac-org/Script-API-Helper-MCP
 cd Script-API-Helper-MCP
-go build -o script-api-helper.exe ./cmd/script-api-helper/
+go run ./tools/install/main.go
+# or on Windows: .\build.ps1
 
 # Run (stdio transport — connect via MCP client)
 ./script-api-helper.exe
 ```
 
-The server speaks **stdio MCP transport**. Configure your MCP client (Claude Desktop, VS Code extension, etc.) to launch it as a subprocess.
+`go run ./tools/install/main.go` builds `script-api-helper.exe` in the project root, copies it to `%USERPROFILE%\.local\bin\` (for global MCP configs), and updates project `opencode.json` so OpenCode uses `./script-api-helper.exe`. Restart the MCP server in your client after building.
+
+The server speaks **stdio MCP transport**. Configure your MCP client (Claude Desktop, OpenCode, VS Code extension, etc.) to launch it as a subprocess.
+
+### OpenCode (project config)
+
+`tools/install` writes `opencode.json` automatically. See `opencode.example.json` for the shape.
 
 ### VS Code / Claude Desktop config snippet
 
@@ -182,6 +189,8 @@ Diagnoses common reasons Bedrock packs fail to load. Runs workspace validation a
 ### `distribute_addon`
 Packages behavior/resource packs into a `.mcaddon` archive, deploys to Minecraft development folders, or both (`action=package`, `deploy`, or `both`).
 
+**Dev-suffix handling (`dev_pack`):** Mirrors the generated `bundle.js` from `scaffold_addon`. Pass `dev_pack=true` to ensure `header.name` ends with `-dev` in the package/deploy output; pass `dev_pack=false` to strip it. Omit the field to auto-detect from the current `header.name` (a `-dev` suffix implies dev). A staging copy of the workspace is used during the operation and the source manifest is restored on completion — your working tree is never mutated. The response includes a `dev_suffix` block reporting the original/final name and whether it changed for each pack.
+
 ---
 ### MCP Resources
 
@@ -197,12 +206,12 @@ The server exposes these read-only resources:
 ## Development
 
 ```bash
+# Build, deploy, and sync OpenCode config
+go run ./tools/install/main.go
+
 # Build & test
 go build ./...
 go test ./...
-
-# Build binary
-go build -o script-api-helper.exe ./cmd/script-api-helper/
 
 # Run all tests including network-dependent (opt-in)
 go test -tags=network ./...

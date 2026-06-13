@@ -1,0 +1,10 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "Script-API-Helper": {
+      "type": "local",
+      "command": ["./script-api-helper.exe"],
+      "enabled": true
+    }
+  }
+}
