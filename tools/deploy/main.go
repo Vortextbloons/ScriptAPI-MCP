@@ -1,8 +1,6 @@
-//go:build ignore
-
-// Install builds script-api-helper, deploys it for MCP clients, and syncs project opencode.json.
+// Deploy builds script-api-helper, copies it for MCP clients, and syncs project opencode.json.
 //
-// Usage: go run ./tools/install
+// Usage: go run ./tools/deploy
 package main
 
 import (
@@ -90,7 +88,11 @@ func localBinDir() (string, error) {
 func stopRunning(binaryName string) {
 	fmt.Printf("Stopping any running %s processes...\n", binaryName)
 	if runtime.GOOS == "windows" {
-		_ = exec.Command("taskkill", "/F", "/IM", binaryName).Run()
+		if err := exec.Command("taskkill", "/IM", binaryName).Run(); err != nil {
+			if err := exec.Command("taskkill", "/F", "/IM", binaryName).Run(); err != nil {
+				fmt.Fprintf(os.Stderr, "Note: could not stop %s (restart the MCP manually if deploy fails).\n", binaryName)
+			}
+		}
 		return
 	}
 	_ = exec.Command("pkill", "-x", binaryName).Run()

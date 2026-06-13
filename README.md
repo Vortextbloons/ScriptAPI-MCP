@@ -38,20 +38,20 @@ All error responses are **structured JSON** with machine-readable codes, retryab
 # Clone and build (deploys to ~/.local/bin and syncs project opencode.json)
 git clone https://github.com/isaac-org/Script-API-Helper-MCP
 cd Script-API-Helper-MCP
-go run ./tools/install/main.go
+go run ./tools/deploy
 # or on Windows: .\build.ps1
 
 # Run (stdio transport — connect via MCP client)
 ./script-api-helper.exe
 ```
 
-`go run ./tools/install/main.go` builds `script-api-helper.exe` in the project root, copies it to `%USERPROFILE%\.local\bin\` (for global MCP configs), and updates project `opencode.json` so OpenCode uses `./script-api-helper.exe`. Restart the MCP server in your client after building.
+`go run ./tools/deploy` builds `script-api-helper.exe` in the project root, copies it to `%USERPROFILE%\.local\bin\` (for global MCP configs), and updates project `opencode.json` so OpenCode uses `./script-api-helper.exe`. Restart the MCP server in your client after building.
 
 The server speaks **stdio MCP transport**. Configure your MCP client (Claude Desktop, OpenCode, VS Code extension, etc.) to launch it as a subprocess.
 
 ### OpenCode (project config)
 
-`tools/install` writes `opencode.json` automatically. See `opencode.example.json` for the shape.
+`tools/deploy` writes `opencode.json` automatically. See `opencode.example.json` for the shape.
 
 ### VS Code / Claude Desktop config snippet
 
@@ -217,7 +217,7 @@ The server exposes these read-only resources:
 
 ```bash
 # Build, deploy, and sync OpenCode config
-go run ./tools/install/main.go
+go run ./tools/deploy
 
 # Build & test
 go build ./...

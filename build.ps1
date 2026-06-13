@@ -1,1 +1,1 @@
-go run ./tools/install/main.go
+go run ./tools/deploy
