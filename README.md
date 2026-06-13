@@ -1,14 +1,14 @@
 # Bedrock Script API Helper MCP
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.6.0-blue?style=flat-square" alt="Version 1.6.0">
+  <img src="https://img.shields.io/badge/version-1.9.0-blue?style=flat-square" alt="Version 1.9.0">
   <img src="https://img.shields.io/badge/go-1.26.2-00ADD8?style=flat-square&logo=go" alt="Go 1.26.2">
   <img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="MIT License">
   <img src="https://img.shields.io/badge/MCP-server-7B68EE?style=flat-square" alt="MCP Server">
   <img src="https://img.shields.io/badge/Bedrock-Script%20API-FF6B35?style=flat-square" alt="Bedrock Script API">
 </p>
 
-An **MCP (Model Context Protocol) server** for Minecraft Bedrock Script API development. Provides a toolkit of **22 tools** that help AI assistants scaffold addons, validate manifests, search API types, detect breaking changes, generate UUIDs, package deployments, inspect workspaces, and produce boilerplate code — all backed by live npm registry data.
+An **MCP (Model Context Protocol) server** for Minecraft Bedrock Script API development. Provides **11 tools** that help AI assistants scaffold addons, validate manifests, search API types, detect breaking changes, generate UUIDs, package deployments, inspect workspaces, and produce boilerplate code — all backed by live npm registry data.
 
 All error responses are **structured JSON** with machine-readable codes, retryability flags, and actionable suggestions.
 
@@ -18,28 +18,17 @@ All error responses are **structured JSON** with machine-readable codes, retryab
 
 | Tool | Description |
 |------|-------------|
-| `resolve_api_environment` | Fetches the npm version matrix for a Minecraft version and recommends modules |
-| `init_addon_workspace` | Generates folder structure, manifests, and starter code for a new addon |
-| `search_api_types` | Queries TypeScript definitions from the live npm package |
-| `search_api_members` | Searches API members by text match against TypeScript definitions |
-| `sync_manifest_dependencies` | Safely adds/removes script modules from an existing manifest |
-| `scaffold_addon` | Full project scaffolding with deploy scripts and file output (dry-run and overwrite-safe) |
-| `inspect_addon_workspace` | Returns structured inventory of an addon workspace |
-| `validate_addon_workspace` | Validates entire workspace: entrypoints, source files, dependencies, config |
-| `package_addon` | Cross-platform .mcaddon packaging via zip |
-| `deploy_addon` | Deploys packs to Minecraft development folders with dry-run |
-| `get_mcp_version` | Reports the MCP server name and version |
+| `resolve_api_environment` | Resolves npm versions and recommends modules (`mode=resolve`), or lists publish versions (`mode=list-versions`) |
+| `search_api` | Queries TypeScript definitions from live npm packages |
+| `manifest` | Diagnoses, auto-fixes, or syncs dependencies on `manifest.json` (`mode=diagnose`, `fix`, `sync-deps`) |
+| `scaffold_addon` | Full project scaffolding with deploy scripts and file output |
+| `diagnose_workspace` | Validates workspace and diagnoses pack loading issues |
+| `distribute_addon` | Packages `.mcaddon` archives and/or deploys to development folders |
+| `generate_code` | Lists or generates boilerplate patterns (`mode=list` or `generate`) |
 | `generate_uuid` | Generates v4 UUIDs with manifest slot presets |
-| `generate_bedrock_snippet` | Produces event handler and component boilerplate (JS/TS) |
-| `generate_ui_form` | Generates @minecraft/server-ui form boilerplate (action, modal, message) |
-| `generate_custom_item` | Generates custom item component registration code |
-| `manifest_doctor` | Validates a manifest for 21 common issues |
-| `manifest_fixup` | Applies auto-fixes for doctor-detectable problems |
 | `diff_script_api_versions` | Diffs the API surface between two module versions |
-| `list_api_versions` | Lists available npm publish versions with channel filtering |
-| `troubleshoot_pack_not_loading` | Diagnoses common reasons packs fail to load |
-| `list_code_patterns` | Lists available code generation patterns with metadata and category filtering |
-| `project_health_score` | Calculates a health score and highlights risky areas |
+| `bedrock_reference` | Static lookups: color codes (`topic=color-codes`) or best practices (`topic=best-practices`) |
+| `get_mcp_version` | Reports the MCP server name and version |
 
 ---
 
@@ -74,21 +63,26 @@ The server speaks **stdio MCP transport**. Configure your MCP client (Claude Des
 ## Tool Details
 
 ### `resolve_api_environment`
-Baseline sanity check before writing any code. Takes a Minecraft version and channel (`stable`, `beta`, `preview`), resolves the matching npm version, lists available `@minecraft/*` modules, and applies guardrails (Java API prohibition, deprecated module warnings).
+Baseline sanity check before writing any code, or version discovery.
 
-Returns both `exact_npm_version` (for type lookups and API diffing) and `manifest_version` (for manifest dependencies).
+| Mode | Purpose |
+|------|---------|
+| `resolve` (default) | Takes a Minecraft version and channel (`stable`, `beta`, `preview`), resolves the matching npm version, lists available `@minecraft/*` modules, and applies guardrails |
+| `list-versions` | Lists npm publish versions for a module with channel filtering (`stable`, `beta`, `preview`, `all`) |
 
-### `init_addon_workspace`
-Generates a complete addon skeleton: behavior pack manifest, optional resource pack manifest, file structure tree, and starter code (`src/main.js` or `src/main.ts`). Dependencies are resolved against live npm data. Uses the server-wide shared npm client for caching.
+Returns both `exact_npm_version` (for type lookups and API diffing) and `manifest_version` (for manifest dependencies) in resolve mode.
 
-### `search_api_types`
-Fetches the full `.d.ts` bundle for a `@minecraft/*` version and extracts the definition for a specific symbol (class, interface, function, etc.) plus all types it references. Verifies version exists on npm and auto-resolves ambiguous versions.
+### `search_api`
+Fetches TypeScript definitions from live npm packages. Search by symbol name or member text match for a `@minecraft/*` module version.
 
-### `search_api_members`
-Searches API members by case-insensitive text match against TypeScript definitions for a module version. Returns matching line snippets with their count. Useful for finding all APIs containing a keyword like `scoreboard`, `location`, or `spawn`.
+### `manifest`
+Operates on a `manifest.json` string:
 
-### `sync_manifest_dependencies`
-Parses an existing `manifest.json`, applies add/remove operations on `@minecraft/*` module dependencies, and rejects deprecated modules (`mojang-minecraft`, etc.).
+| Mode | Purpose |
+|------|---------|
+| `diagnose` (default) | Validates against 21+ rules (structure, UUIDs, deprecated modules, node_modules mismatch) |
+| `fix` | Applies auto-fixes from doctor findings |
+| `sync-deps` | Safely adds/removes `@minecraft/*` module dependencies; rejects deprecated modules |
 
 ### `scaffold_addon`
 Full project scaffold — everything `init_addon_workspace` does, plus optional `package.json` with esbuild build scripts, TypeScript config, deploy script that copies output to the `com.mojang` folder, and writes everything to disk.
@@ -138,66 +132,22 @@ Standalone UUID generator with three operating modes:
 Output formats: `plain` (list), `assignments` (slot = uuid), `json` (structured).
 
 ### `generate_code`
-Unified boilerplate generator for 18 patterns in JavaScript or TypeScript. Supports event subscriptions, custom components, UI forms, and advanced runtime patterns. All patterns include metadata (category, complexity, tags) for AI discovery.
+Lists or generates Bedrock Script API boilerplate in JavaScript or TypeScript.
 
-**Event snippets (simple):**
+| Mode | Purpose |
+|------|---------|
+| `list` | Discover snippet types; filter by `category`, `complexity`, `module`, or `query` |
+| `generate` (default) | Produce code for a `snippet_type` (events, forms, custom items, advanced patterns) |
 
-| Snippet | Description |
-|---------|-------------|
-| `beforeEvents.playerBreakBlock` | Block break event handler |
-| `afterEvents.playerSpawn` | Player spawn event handler |
-| `worldInitialize` | Custom component registration (world init) |
-| `custom_item_template` | Item component with `onUse` |
-| `custom_block_template` | Block component with `onPlayerDestroy` |
-| `script_event_handler` | Script event receive handler |
+TypeScript output uses `import type`, explicit event parameter types, and `: void` return annotations.
 
-**UI forms:** `action_form`, `modal_form`, `message_form` (via `generate_ui_form`)
+### `bedrock_reference`
+Static reference lookups (no network required):
 
-**Custom item:** `custom_item` (via `generate_custom_item`)
-
-**Advanced patterns (complex):**
-
-| Snippet | Category | Complexity | Description |
-|---------|----------|------------|-------------|
-| `runtime.plugin_registry` | runtime | complex | Event-dispatching plugin system with typed hooks |
-| `ui.action_form_wizard` | ui | complex | Multi-step modal state machine with push-based steps |
-| `interaction.item_interaction_handler` | ui | complex | Block-click → UI → item modification pipeline |
-| `runtime.background_scheduler` | runtime | moderate | Tick-budgeted background task scheduler |
-| `storage.dynamic_property_store` | storage | moderate | Schema-versioned JSON blob storage with migration |
-| `balance.scaled_value` | balance | moderate | Formula-based scaling with weighted level rolling |
-| `command.custom_slash_command` | command | moderate | Custom command registration with permissions |
-| `runtime.profile_cache` | runtime | simple | Player-scoped data cache with TTL invalidation |
-| `runtime.cooldown_manager` | runtime | simple | Tick-based cooldown with prefix cleanup |
-| `storage.world_config` | storage | simple | World-level JSON config with defaults |
-| `equipment.equipment_scanner` | equipment | simple | Scan all equipment slots with data extraction |
-| `item.lore_builder` | item | simple | Color-coded lore with word wrap and block replace |
-
-TypeScript output uses `import type`, explicit event parameter types, and `: void` return annotations. Use `list_code_patterns` to discover patterns by category, complexity, or module.
-
-### `generate_ui_form`
-Generates `@minecraft/server-ui` form boilerplate. Supports three form types:
-
-| Form Type | Description |
-|-----------|-------------|
-| `action` | ActionFormData with buttons |
-| `modal` | ModalFormData with text fields |
-| `message` | MessageFormData with yes/no buttons |
-
-Output in JavaScript or TypeScript.
-
-### `generate_custom_item`
-Generates custom item component registration code for `worldInitialize`. Produces a complete `registerCustomComponent` call with `onUse` handler. Supports JavaScript and TypeScript output with typed event parameters.
-
-### `manifest_doctor`
-Two-pass diagnostic engine that checks a `manifest.json` against 21 rules:
-
-- **Structural** (raw JSON): invalid JSON, missing `format_version`, wrong header shape, missing UUIDs, duplicate UUIDs, invalid version arrays
-- **Semantic** (typed): deprecated modules, unknown `@minecraft/*` modules, missing `@minecraft/server` for script packs, duplicate dependencies, local `node_modules` mismatch
-
-Returns structured findings with `rule` IDs consumable by `manifest_fixup`.
-
-### `manifest_fixup`
-Consumes doctor findings and auto-corrects 16 fixable rules — generates missing UUIDs, inserts placeholder names, fixes version arrays, replaces deprecated modules, deduplicates dependencies, and more. Supports selective fix application or bulk `fix_all`.
+| Topic | Purpose |
+|-------|---------|
+| `color-codes` | Minecraft `§` color and format codes |
+| `best-practices` | Curated Script API performance and architecture guidance |
 
 ### `diff_script_api_versions`
 Diffs the exported TypeScript API surface between two exact npm publishes. Both versions must be exact publish strings (shorthand like `2.8.0-beta` returns concrete candidates). Detects:
@@ -208,10 +158,7 @@ Diffs the exported TypeScript API surface between two exact npm publishes. Both 
 
 Output is sorted, filterable by symbol name, and capped by `max_results`.
 
-### `list_api_versions`
-Lists available npm publish versions for a `@minecraft/*` module with channel filtering. Filter by `stable`, `beta`, `preview`, or `all`. Results are sorted highest-first and capped by `limit` (default 30).
-
-### `troubleshoot_pack_not_loading`
+### `diagnose_workspace`
 Diagnoses common reasons Bedrock packs fail to load. Runs workspace validation and returns findings alongside a checklist of recommended checks:
 - Valid manifests
 - Unique UUIDs
@@ -219,19 +166,8 @@ Diagnoses common reasons Bedrock packs fail to load. Runs workspace validation a
 - Compatible module versions
 - Packs deployed to correct `com.mojang` directories
 
-### `list_code_patterns`
-Discovers available `generate_code` pattern types with metadata filtering. AI-friendly tool that lets you browse the catalog before generating code.
-
-**Input filters** (all optional):
-- `category` — Filter by: `runtime`, `ui`, `storage`, `equipment`, `item`, `balance`, `command`
-- `complexity` — Filter by: `simple`, `moderate`, `complex`
-- `module` — Filter by required module, e.g. `@minecraft/server-ui`
-- `query` — Free-text search in type key, description, and tags
-
-Returns a JSON array of matching patterns with type, description, category, complexity, tags, required_modules, and related patterns.
-
-### `project_health_score`
-Calculates an addon workspace health score (0-100) from validation findings. Returns a status label (`excellent`, `good`, `fair`, `poor`) and the full findings list. Each error costs 25 points, each warning costs 10.
+### `distribute_addon`
+Packages behavior/resource packs into a `.mcaddon` archive, deploys to Minecraft development folders, or both (`action=package`, `deploy`, or `both`).
 
 ---
 ### MCP Resources

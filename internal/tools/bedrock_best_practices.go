@@ -366,14 +366,6 @@ registerEveryTickTask("urgent", () => {
 	},
 }
 
-func RegisterGetBestPractices(server *mcp.Server) error {
-	return server.RegisterTool("get_best_practices",
-		"Returns curated best practices for Minecraft Bedrock Script API development. Covers performance principles, architecture & stability, and performance optimization. Use optional category filter or search keyword.",
-		func(args GetBestPracticesInput) (*mcp.ToolResponse, error) {
-			return handleGetBestPractices(args)
-		})
-}
-
 func handleGetBestPractices(args GetBestPracticesInput) (*mcp.ToolResponse, error) {
 	category := strings.ToLower(args.Category)
 	search := strings.ToLower(strings.TrimSpace(args.Search))

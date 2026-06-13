@@ -11,24 +11,137 @@ import (
 )
 
 type GenerateCodeInput struct {
-	SnippetType     string `json:"snippet_type" mcp:"required,description='Code type. Event snippets: beforeEvents.playerBreakBlock, afterEvents.playerSpawn, worldInitialize, custom_item_template, custom_block_template, script_event_handler. UI forms: action_form, modal_form, message_form. Custom item: custom_item. Advanced patterns: runtime.plugin_registry, runtime.background_scheduler, runtime.profile_cache, runtime.cooldown_manager, ui.action_form_wizard, interaction.item_interaction_handler, storage.dynamic_property_store, storage.world_config, equipment.equipment_scanner, item.lore_builder, balance.scaled_value, command.custom_slash_command'"`
-	Title           string `json:"title" mcp:"description='Form title (for action_form, modal_form, message_form only)'"`
-	Identifier      string `json:"identifier" mcp:"description='Custom component identifier (for custom_item only), e.g. myaddon:wand'"`
-	Language        string `json:"language" mcp:"description='javascript or typescript (default javascript)'"`
-	Name            string `json:"name" mcp:"description='Optional name for template placeholders (e.g. custom component name)'"`
-	ModuleVersion   string `json:"module_version" mcp:"description='Optional version string injected as comment'"`
-	IncludeComments bool   `json:"include_comments" mcp:"description='Whether to include descriptive comments (default false)'"`
+	Mode            string `json:"mode" mcp:"description='generate (default) to produce code, list to discover available snippet types'"`
+	SnippetType     string `json:"snippet_type" mcp:"description='generate mode: snippet type key (e.g. beforeEvents.playerBreakBlock, action_form, runtime.plugin_registry). Use mode=list first to discover types.'"`
+	Title           string `json:"title" mcp:"description='generate mode: form title (action_form, modal_form, message_form only)'"`
+	Identifier      string `json:"identifier" mcp:"description='generate mode: custom component identifier (custom_item only), e.g. myaddon:wand'"`
+	Language        string `json:"language" mcp:"description='generate mode: javascript or typescript (default javascript)'"`
+	Name            string `json:"name" mcp:"description='generate mode: optional name for template placeholders'"`
+	ModuleVersion   string `json:"module_version" mcp:"description='generate mode: optional version string injected as comment'"`
+	IncludeComments bool   `json:"include_comments" mcp:"description='generate mode: include descriptive comments (default false)'"`
+	Category        string `json:"category" mcp:"description='list mode: filter by category (runtime, ui, storage, equipment, item, balance, command)'"`
+	Complexity      string `json:"complexity" mcp:"description='list mode: filter by complexity (simple, moderate, complex)'"`
+	Module          string `json:"module" mcp:"description='list mode: filter by required module, e.g. @minecraft/server-ui'"`
+	Query           string `json:"query" mcp:"description='list mode: free-text search in type key, description, or tags'"`
+}
+
+type PatternEntry struct {
+	Type            string   `json:"type"`
+	Description     string   `json:"description"`
+	Category        string   `json:"category"`
+	Complexity      string   `json:"complexity"`
+	Tags            []string `json:"tags"`
+	RequiredModules []string `json:"required_modules"`
+	Related         []string `json:"related"`
 }
 
 func RegisterGenerateCode(server *mcp.Server) error {
 	return server.RegisterTool("generate_code",
-		"Generates Bedrock Script API boilerplate code. Supports event subscriptions, custom item/block components, worldInitialize, UI forms (action/modal/message), and script event handlers in JavaScript or TypeScript.",
+		"Generates Bedrock Script API boilerplate or lists available patterns. Use mode=list to discover snippet types (filter by category, complexity, module, or query). Use mode=generate (default) with snippet_type to produce JavaScript or TypeScript code for events, forms, custom items/blocks, and advanced patterns.",
 		func(args GenerateCodeInput) (*mcp.ToolResponse, error) {
 			return handleGenerateCode(args)
 		})
 }
 
 func handleGenerateCode(args GenerateCodeInput) (*mcp.ToolResponse, error) {
+	mode := strings.ToLower(strings.TrimSpace(args.Mode))
+	if mode == "" {
+		mode = "generate"
+	}
+
+	switch mode {
+	case "list":
+		return handleListCodePatterns(args)
+	case "generate":
+		return handleGenerateCodeSnippet(args)
+	default:
+		return toolErrorResponse("INVALID_INPUT", fmt.Sprintf("unknown mode %q (use list or generate)", args.Mode), false), nil
+	}
+}
+
+func handleListCodePatterns(args GenerateCodeInput) (*mcp.ToolResponse, error) {
+	definitions := snippets.AllDefinitions
+
+	if args.Category != "" {
+		cat := strings.ToLower(args.Category)
+		filtered := make([]snippets.SnippetDefinition, 0)
+		for _, d := range definitions {
+			if strings.ToLower(d.Category) == cat {
+				filtered = append(filtered, d)
+			}
+		}
+		definitions = filtered
+	}
+
+	if args.Complexity != "" {
+		cpl := strings.ToLower(args.Complexity)
+		filtered := make([]snippets.SnippetDefinition, 0)
+		for _, d := range definitions {
+			if strings.ToLower(d.Complexity) == cpl {
+				filtered = append(filtered, d)
+			}
+		}
+		definitions = filtered
+	}
+
+	if args.Module != "" {
+		mod := strings.ToLower(args.Module)
+		filtered := make([]snippets.SnippetDefinition, 0)
+		for _, d := range definitions {
+			for _, m := range d.RequiredModules {
+				if strings.Contains(strings.ToLower(m), mod) {
+					filtered = append(filtered, d)
+					break
+				}
+			}
+		}
+		definitions = filtered
+	}
+
+	if args.Query != "" {
+		q := strings.ToLower(args.Query)
+		filtered := make([]snippets.SnippetDefinition, 0)
+		for _, d := range definitions {
+			if strings.Contains(strings.ToLower(d.Type), q) || strings.Contains(strings.ToLower(d.Description), q) {
+				filtered = append(filtered, d)
+				continue
+			}
+			for _, tag := range d.Tags {
+				if strings.Contains(strings.ToLower(tag), q) {
+					filtered = append(filtered, d)
+					break
+				}
+			}
+		}
+		definitions = filtered
+	}
+
+	entries := make([]PatternEntry, 0, len(definitions))
+	for _, d := range definitions {
+		entries = append(entries, PatternEntry{
+			Type:            d.Type,
+			Description:     d.Description,
+			Category:        d.Category,
+			Complexity:      d.Complexity,
+			Tags:            d.Tags,
+			RequiredModules: d.RequiredModules,
+			Related:         d.Related,
+		})
+	}
+
+	b, err := json.MarshalIndent(entries, "", "  ")
+	if err != nil {
+		return toolErrorResponse("MARSHAL_FAILED", err.Error(), false), nil
+	}
+
+	return mcp.NewToolResponse(mcp.NewTextContent(string(b))), nil
+}
+
+func handleGenerateCodeSnippet(args GenerateCodeInput) (*mcp.ToolResponse, error) {
+	if strings.TrimSpace(args.SnippetType) == "" {
+		return toolErrorResponse("INVALID_INPUT", "snippet_type is required in generate mode (use mode=list to discover types)", false), nil
+	}
+
 	lang := args.Language
 	if lang == "" {
 		lang = "javascript"

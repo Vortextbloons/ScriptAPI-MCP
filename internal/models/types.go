@@ -101,7 +101,7 @@ type AddonWorkspace struct {
 	StarterCode          map[string]string `json:"starter_code"`
 }
 
-// AllowedModules is the whitelist for sync_manifest_dependencies
+// AllowedModules is the whitelist for manifest sync-deps mode
 var AllowedModules = []string{
 	"@minecraft/server",
 	"@minecraft/server-ui",

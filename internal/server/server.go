@@ -25,19 +25,16 @@ func NewWithTransport(tr transport.Transport) (*mcp.Server, error) {
 		mcp.WithVersion(version.Current),
 	)
 
-	// Initialize npm client
 	npmClient := npm.NewClient()
 
-	// Register all tools
 	if err := tools.RegisterResolveAPIEnvironment(server, npmClient); err != nil {
 		return nil, fmt.Errorf("failed to register resolve_api_environment: %w", err)
 	}
-
 	if err := tools.RegisterSearchAPI(server, npmClient); err != nil {
 		return nil, fmt.Errorf("failed to register search_api: %w", err)
 	}
-	if err := tools.RegisterSyncManifestDependencies(server); err != nil {
-		return nil, fmt.Errorf("failed to register sync_manifest_dependencies: %w", err)
+	if err := tools.RegisterManifest(server); err != nil {
+		return nil, fmt.Errorf("failed to register manifest: %w", err)
 	}
 	if err := tools.RegisterVersionInfo(server); err != nil {
 		return nil, fmt.Errorf("failed to register get_mcp_version: %w", err)
@@ -51,9 +48,6 @@ func NewWithTransport(tr transport.Transport) (*mcp.Server, error) {
 	if err := tools.RegisterGenerateUUID(server); err != nil {
 		return nil, fmt.Errorf("failed to register generate_uuid: %w", err)
 	}
-	if err := tools.RegisterManifestCheck(server); err != nil {
-		return nil, fmt.Errorf("failed to register manifest_check: %w", err)
-	}
 	if err := tools.RegisterDiffScriptAPIVersions(server, npmClient); err != nil {
 		return nil, fmt.Errorf("failed to register diff_script_api_versions: %w", err)
 	}
@@ -63,21 +57,10 @@ func NewWithTransport(tr transport.Transport) (*mcp.Server, error) {
 	if err := tools.RegisterDistributeAddon(server); err != nil {
 		return nil, fmt.Errorf("failed to register distribute_addon: %w", err)
 	}
-	if err := tools.RegisterListAPIVersions(server, npmClient); err != nil {
-		return nil, fmt.Errorf("failed to register list_api_versions: %w", err)
+	if err := tools.RegisterBedrockReference(server); err != nil {
+		return nil, fmt.Errorf("failed to register bedrock_reference: %w", err)
 	}
 
-	if err := tools.RegisterLookupColorCode(server); err != nil {
-		return nil, fmt.Errorf("failed to register lookup_color_code: %w", err)
-	}
-	if err := tools.RegisterGetBestPractices(server); err != nil {
-		return nil, fmt.Errorf("failed to register get_best_practices: %w", err)
-	}
-	if err := tools.RegisterListCodePatterns(server); err != nil {
-		return nil, fmt.Errorf("failed to register list_code_patterns: %w", err)
-	}
-
-	// Register static resource: bedrock://docs/strict_rules
 	if err := server.RegisterResource("bedrock://docs/strict_rules",
 		"Bedrock Script API Strict Rules",
 		"Bedrock Script API guardrails and syntax cheat sheet",

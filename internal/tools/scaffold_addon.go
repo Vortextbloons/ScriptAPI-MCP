@@ -311,14 +311,20 @@ function prompt(question) {
   });
 }
 
-function patchManifestForDev(manifestPath) {
+function patchManifest(manifestPath, isDev) {
   if (!existsSync(manifestPath)) return null;
   const original = readFileSync(manifestPath, "utf8");
   const manifest = JSON.parse(original);
   manifest.header = manifest.header || {};
   const name = manifest.header.name || "";
-  if (!name.endsWith(DEV_SUFFIX)) {
-    manifest.header.name = name + DEV_SUFFIX;
+  let nextName = name;
+  if (isDev && !name.endsWith(DEV_SUFFIX)) {
+    nextName = name + DEV_SUFFIX;
+  } else if (!isDev && name.endsWith(DEV_SUFFIX)) {
+    nextName = name.slice(0, -DEV_SUFFIX.length);
+  }
+  if (nextName !== name) {
+    manifest.header.name = nextName;
     writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + "\n");
   }
   return original;
@@ -340,11 +346,9 @@ async function main() {
 	}
 	script += `
   const patched = [];
-  if (isDev) {
-    for (const manifestPath of manifestPaths) {
-      const original = patchManifestForDev(manifestPath);
-      if (original != null) patched.push([manifestPath, original]);
-    }
+  for (const manifestPath of manifestPaths) {
+    const original = patchManifest(manifestPath, isDev);
+    if (original != null) patched.push([manifestPath, original]);
   }
 
   try {

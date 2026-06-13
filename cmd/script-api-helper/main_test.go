@@ -101,20 +101,20 @@ func TestToolCalls(t *testing.T) {
 		t.Error("scaffold_addon response missing RP manifest")
 	}
 
-	// Test Tool 4: sync_manifest_dependencies with valid module
-	send(`{"jsonrpc":"2.0","id":20,"method":"tools/call","params":{"name":"sync_manifest_dependencies","arguments":{"current_manifest_json":"{\"format_version\":2,\"header\":{\"name\":\"Test\",\"description\":\"Desc\",\"uuid\":\"11111111-1111-1111-1111-111111111111\",\"version\":[1,0,0]},\"modules\":[{\"type\":\"data\",\"uuid\":\"22222222-2222-2222-2222-222222222222\",\"version\":[1,0,0]},{\"type\":\"script\",\"uuid\":\"33333333-3333-3333-3333-333333333333\",\"version\":[1,0,0],\"language\":\"javascript\",\"entry\":\"scripts/main.js\"}],\"dependencies\":[{\"module_name\":\"@minecraft/server\",\"version\":\"1.21.60\"}]}","added_modules":["@minecraft/server-net"],"removed_modules":[]}}}`)
+	// Test manifest sync-deps mode
+	send(`{"jsonrpc":"2.0","id":20,"method":"tools/call","params":{"name":"manifest","arguments":{"mode":"sync-deps","manifest_json":"{\"format_version\":2,\"header\":{\"name\":\"Test\",\"description\":\"Desc\",\"uuid\":\"11111111-1111-1111-1111-111111111111\",\"version\":[1,0,0]},\"modules\":[{\"type\":\"data\",\"uuid\":\"22222222-2222-2222-2222-222222222222\",\"version\":[1,0,0]},{\"type\":\"script\",\"uuid\":\"33333333-3333-3333-3333-333333333333\",\"version\":[1,0,0],\"language\":\"javascript\",\"entry\":\"scripts/main.js\"}],\"dependencies\":[{\"module_name\":\"@minecraft/server\",\"version\":\"1.21.60\"}]}","added_modules":["@minecraft/server-net"],"removed_modules":[]}}}`)
 	resp4 := readResponse()
-	fmt.Println("Tool 4 response:", resp4)
+	fmt.Println("manifest sync-deps response:", resp4)
 	if !strings.Contains(resp4, "@minecraft/server-net") {
-		t.Error("sync_manifest_dependencies response missing added module")
+		t.Error("manifest sync-deps response missing added module")
 	}
 
-	// Test Tool 4: sync_manifest_dependencies with INVALID module
-	send(`{"jsonrpc":"2.0","id":21,"method":"tools/call","params":{"name":"sync_manifest_dependencies","arguments":{"current_manifest_json":"{\"format_version\":2,\"header\":{\"name\":\"Test\",\"description\":\"Desc\",\"uuid\":\"11111111-1111-1111-1111-111111111111\",\"version\":[1,0,0]},\"modules\":[{\"type\":\"data\",\"uuid\":\"22222222-2222-2222-2222-222222222222\",\"version\":[1,0,0]},{\"type\":\"script\",\"uuid\":\"33333333-3333-3333-3333-333333333333\",\"version\":[1,0,0],\"language\":\"javascript\",\"entry\":\"scripts/main.js\"}],\"dependencies\":[{\"module_name\":\"@minecraft/server\",\"version\":\"1.21.60\"}]}","added_modules":["mojang-minecraft"],"removed_modules":[]}}}`)
+	// Test manifest sync-deps with INVALID module
+	send(`{"jsonrpc":"2.0","id":21,"method":"tools/call","params":{"name":"manifest","arguments":{"mode":"sync-deps","manifest_json":"{\"format_version\":2,\"header\":{\"name\":\"Test\",\"description\":\"Desc\",\"uuid\":\"11111111-1111-1111-1111-111111111111\",\"version\":[1,0,0]},\"modules\":[{\"type\":\"data\",\"uuid\":\"22222222-2222-2222-2222-222222222222\",\"version\":[1,0,0]},{\"type\":\"script\",\"uuid\":\"33333333-3333-3333-3333-333333333333\",\"version\":[1,0,0],\"language\":\"javascript\",\"entry\":\"scripts/main.js\"}],\"dependencies\":[{\"module_name\":\"@minecraft/server\",\"version\":\"1.21.60\"}]}","added_modules":["mojang-minecraft"],"removed_modules":[]}}}`)
 	resp4b := readResponse()
-	fmt.Println("Tool 4 invalid response:", resp4b)
+	fmt.Println("manifest sync-deps invalid response:", resp4b)
 	if !strings.Contains(resp4b, "deprecated") {
-		t.Error("sync_manifest_dependencies should reject deprecated module")
+		t.Error("manifest sync-deps should reject deprecated module")
 	}
 
 	// Test Tool 1: resolve_api_environment

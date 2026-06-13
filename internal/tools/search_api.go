@@ -52,7 +52,7 @@ func handleSearchAPI(args SearchAPIInput, npmClient *npm.Client) (*mcp.ToolRespo
 		}
 		resolved, err := npm.ResolveVersionForChannel(vm, mcVersion, channel)
 		if err != nil {
-			return toolErrorResponse("VERSION_RESOLVE_FAILED", fmt.Sprintf("no matching version for %s @ Minecraft %s (channel: %s): %v", args.Module, mcVersion, channel, err), false, "Try a different Minecraft version", "Try stable instead of beta", "Use list_api_versions to see available versions"), nil
+			return toolErrorResponse("VERSION_RESOLVE_FAILED", fmt.Sprintf("no matching version for %s @ Minecraft %s (channel: %s): %v", args.Module, mcVersion, channel, err), false, "Try a different Minecraft version", "Try stable instead of beta", "Use resolve_api_environment with mode=list-versions to see available versions"), nil
 		}
 		version = resolved
 	}

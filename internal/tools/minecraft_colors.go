@@ -52,14 +52,6 @@ var allColorCodes = []ColorCodeEntry{
 	{Code: "§r", Description: "Reset to default", Category: "format"},
 }
 
-func RegisterLookupColorCode(server *mcp.Server) error {
-	return server.RegisterTool("lookup_color_code",
-		"Returns Minecraft Bedrock color and format codes (§). Use optional search to filter by code or description. Essential for adding colored text to in-game messages, titles, signs, books, and scoreboard displays.",
-		func(args LookupColorCodeInput) (*mcp.ToolResponse, error) {
-			return handleLookupColorCode(args)
-		})
-}
-
 func handleLookupColorCode(args LookupColorCodeInput) (*mcp.ToolResponse, error) {
 	category := strings.ToLower(args.Category)
 	search := strings.ToLower(strings.TrimSpace(args.Search))
