@@ -17,6 +17,7 @@ func TestBuildScaffoldFiles(t *testing.T) {
 			"src/main.js": "console.log('ok')",
 		},
 		PackageJSON:  "pkg-json",
+		BundleScript: "bundle-js",
 		DeployScript: "deploy-js",
 	}
 
@@ -33,6 +34,9 @@ func TestBuildScaffoldFiles(t *testing.T) {
 	}
 	if files["package.json"] != "pkg-json" {
 		t.Fatalf("package.json not included")
+	}
+	if files[filepath.Join("scripts", "bundle.js")] != "bundle-js" {
+		t.Fatalf("bundle script not included")
 	}
 	if files[filepath.Join("scripts", "deploy.js")] != "deploy-js" {
 		t.Fatalf("deploy script not included")
@@ -121,6 +125,35 @@ func TestResolveScaffoldRoot(t *testing.T) {
 	}
 }
 
+func TestGenerateBundleScriptPackagesMcaddon(t *testing.T) {
+	script := generateBundleScript(ScaffoldAddonInput{
+		AddonName:                      "MyAddon",
+		NeedsCustomBlocksItemsEntities: true,
+	})
+
+	if !strings.Contains(script, `Is this a dev pack? (y/N):`) {
+		t.Fatalf("bundle script should prompt for dev pack")
+	}
+	if !strings.Contains(script, `const DEV_SUFFIX = "-dev"`) {
+		t.Fatalf("bundle script should append -dev to manifest names")
+	}
+	if !strings.Contains(script, `manifestPaths.push(join(ROOT, "resource_pack", "manifest.json"))`) {
+		t.Fatalf("bundle script should patch resource pack manifest")
+	}
+	if !strings.Contains(script, `npm run build`) {
+		t.Fatalf("bundle script should compile before packaging")
+	}
+	if !strings.Contains(script, `node scripts/deploy.js prod`) {
+		t.Fatalf("bundle script should always create mcaddon")
+	}
+	if !strings.Contains(script, `DEV_PACK`) {
+		t.Fatalf("bundle script should flag dev packs for mcaddon output")
+	}
+	if !strings.Contains(script, `.mcaddon`) {
+		t.Fatalf("bundle script should document mcaddon packaging")
+	}
+}
+
 func TestGenerateDeployScriptUsesPackFolders(t *testing.T) {
 	script := generateDeployScript(ScaffoldAddonInput{
 		AddonName:                      "MyAddon",
@@ -163,6 +196,18 @@ func TestGenerateDeployScriptUsesPackFolders(t *testing.T) {
 
 	if !strings.Contains(script, `Compress-Archive`) {
 		t.Fatalf("deploy script should include Compress-Archive for prod")
+	}
+
+	if !strings.Contains(script, `cmd === "compile"`) {
+		t.Fatalf("deploy script should support compile command")
+	}
+
+	if !strings.Contains(script, `SKIP_BUILD`) {
+		t.Fatalf("deploy script should skip rebuild when SKIP_BUILD is set")
+	}
+
+	if !strings.Contains(script, `DEV_PACK`) {
+		t.Fatalf("deploy script should name dev mcaddon files with -dev suffix")
 	}
 
 	_ = manifest.GenerateUUID

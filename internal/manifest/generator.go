@@ -156,14 +156,15 @@ func GeneratePackageJSON(addonName string, deps []models.Dependency, lang string
 
 	if lang == "typescript" {
 		externalStr := strings.Join(externalFlags, " ")
-		scripts["build"] = fmt.Sprintf("esbuild src/main.ts --bundle --format=esm --target=es2020 --outfile=behavior_pack/scripts/main.js %s && node scripts/deploy.js dev", externalStr)
+		scripts["build"] = fmt.Sprintf("esbuild src/main.ts --bundle --format=esm --target=es2020 --outfile=behavior_pack/scripts/main.js %s", externalStr)
 		scripts["typecheck"] = "tsc --noEmit"
 		devDeps["esbuild"] = "^0.25.9"
 		devDeps["typescript"] = "^5.9.2"
 	} else {
-		scripts["build"] = "node scripts/deploy.js dev"
+		scripts["build"] = "node scripts/deploy.js compile"
 		devDeps["esbuild"] = "^0.25.9"
 	}
+	scripts["bundle"] = "node scripts/bundle.js"
 	scripts["deploy:dev"] = "node scripts/deploy.js dev"
 	scripts["deploy:prod"] = "node scripts/deploy.js prod"
 
@@ -340,6 +341,7 @@ func FileStructure(addonName string, needsRP bool, lang string, createDeploy boo
 		base = append(base,
 			"package.json",
 			"scripts/",
+			"scripts/bundle.js",
 			"scripts/deploy.js",
 		)
 	}

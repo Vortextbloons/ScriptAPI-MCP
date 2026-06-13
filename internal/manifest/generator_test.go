@@ -278,11 +278,14 @@ func TestFileStructureTypeScript(t *testing.T) {
 func TestFileStructureWithDeploy(t *testing.T) {
 	files := FileStructure("MyAddon", false, "javascript", true)
 
-	if len(files) != 9 {
-		t.Errorf("file count = %d, want 9", len(files))
+	if len(files) != 10 {
+		t.Errorf("file count = %d, want 10", len(files))
 	}
 	if !contains(files, "package.json") {
 		t.Error("should contain package.json")
+	}
+	if !contains(files, "scripts/bundle.js") {
+		t.Error("should contain scripts/bundle.js")
 	}
 	if !contains(files, "scripts/deploy.js") {
 		t.Error("should contain scripts/deploy.js")

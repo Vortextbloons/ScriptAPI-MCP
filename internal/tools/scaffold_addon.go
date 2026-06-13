@@ -45,6 +45,7 @@ type ScaffoldAddonOutput struct {
 	VersionLookupSteps   []VersionLookupStep `json:"version_lookup_steps,omitempty"`
 	StarterCode          map[string]string   `json:"starter_code"`
 	PackageJSON          string              `json:"package_json,omitempty"`
+	BundleScript         string              `json:"bundle_script,omitempty"`
 	DeployScript         string              `json:"deploy_script,omitempty"`
 	WrittenFiles         []string            `json:"written_files,omitempty"`
 	OutputPath           string              `json:"output_path,omitempty"`
@@ -145,6 +146,7 @@ func handleScaffoldAddon(args ScaffoldAddonInput, npmClient *npm.Client) (*mcp.T
 	}
 
 	if args.CreateDeployScript {
+		output.BundleScript = generateBundleScript(args)
 		output.DeployScript = generateDeployScript(args)
 		output.PackageJSON = manifest.GeneratePackageJSON(args.AddonName, deps, args.ScriptingLanguage)
 		if runtime.GOOS != "windows" {
@@ -212,6 +214,9 @@ func buildScaffoldFiles(output ScaffoldAddonOutput, includeDeploy bool) map[stri
 		if output.PackageJSON != "" {
 			files["package.json"] = output.PackageJSON
 		}
+		if output.BundleScript != "" {
+			files[filepath.Join("scripts", "bundle.js")] = output.BundleScript
+		}
 		if output.DeployScript != "" {
 			files[filepath.Join("scripts", "deploy.js")] = output.DeployScript
 		}
@@ -271,6 +276,95 @@ func buildVersionLookupSteps(modules []string) []VersionLookupStep {
 		})
 	}
 	return steps
+}
+
+func generateBundleScript(args ScaffoldAddonInput) string {
+	bpFolder := "behavior_pack"
+	rpFolder := "resource_pack"
+	if args.BPFolderName != "" {
+		bpFolder = args.BPFolderName
+	}
+	if args.RPFolderName != "" {
+		rpFolder = args.RPFolderName
+	}
+
+	needsRP := args.NeedsCustomBlocksItemsEntities
+
+	var script string
+	script = `// Bundles the addon into a .mcaddon. Asks whether this is a dev pack first.
+const { execSync } = require("child_process");
+const { existsSync, readFileSync, writeFileSync } = require("fs");
+const { resolve, join } = require("path");
+const readline = require("readline");
+
+const ROOT = resolve(__dirname, "..");
+const BP_SRC = join(ROOT, "` + bpFolder + `");
+const DEV_SUFFIX = "-dev";
+
+function prompt(question) {
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+  return new Promise((resolveAnswer) => {
+    rl.question(question, (answer) => {
+      rl.close();
+      resolveAnswer(answer.trim());
+    });
+  });
+}
+
+function patchManifestForDev(manifestPath) {
+  if (!existsSync(manifestPath)) return null;
+  const original = readFileSync(manifestPath, "utf8");
+  const manifest = JSON.parse(original);
+  manifest.header = manifest.header || {};
+  const name = manifest.header.name || "";
+  if (!name.endsWith(DEV_SUFFIX)) {
+    manifest.header.name = name + DEV_SUFFIX;
+    writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + "\n");
+  }
+  return original;
+}
+
+function restoreManifest(manifestPath, original) {
+  if (original != null) writeFileSync(manifestPath, original);
+}
+
+async function main() {
+  const answer = await prompt("Is this a dev pack? (y/N): ");
+  const isDev = /^y(es)?$/i.test(answer);
+
+  const manifestPaths = [join(BP_SRC, "manifest.json")];
+`
+	if needsRP {
+		script += `  manifestPaths.push(join(ROOT, "` + rpFolder + `", "manifest.json"));
+`
+	}
+	script += `
+  const patched = [];
+  if (isDev) {
+    for (const manifestPath of manifestPaths) {
+      const original = patchManifestForDev(manifestPath);
+      if (original != null) patched.push([manifestPath, original]);
+    }
+  }
+
+  try {
+    execSync("npm run build", { stdio: "inherit", cwd: ROOT });
+    const deployEnv = { ...process.env, SKIP_BUILD: "1" };
+    if (isDev) deployEnv.DEV_PACK = "1";
+    execSync("node scripts/deploy.js prod", { stdio: "inherit", cwd: ROOT, env: deployEnv });
+  } finally {
+    for (const [manifestPath, original] of patched) {
+      restoreManifest(manifestPath, original);
+    }
+  }
+}
+
+main().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});
+`
+	return script
 }
 
 func generateDeployScript(args ScaffoldAddonInput) string {
@@ -360,7 +454,7 @@ function readEnv(key) {
 
 	// --- dev command ---
 	script += `function dev() {
-  build();
+  if (!process.env.SKIP_BUILD) build();
   const mcDev = readEnv("DEPLOY_PATH");
   if (!mcDev) {
     console.error("DEPLOY_PATH not set in .env");
@@ -385,7 +479,7 @@ function readEnv(key) {
 `
 	// --- prod command ---
 	script += `function prod() {
-  build();
+  if (!process.env.SKIP_BUILD) build();
   const outPath = readEnv("DOWNLOAD_PATH");
   if (!outPath) {
     console.error("DOWNLOAD_PATH not set in .env");
@@ -408,10 +502,11 @@ function readEnv(key) {
 `
 	}
 	script += `  console.log("Creating .mcaddon...");
-  const addonZip = join(tempDir, ADDON_NAME + ".zip");
+  const releaseName = process.env.DEV_PACK === "1" ? ADDON_NAME + "-dev" : ADDON_NAME;
+  const addonZip = join(tempDir, releaseName + ".zip");
   execSync(` + "`" + `powershell -NoProfile -Command "Compress-Archive -Path ${packs.join(',')} -DestinationPath '${addonZip}' -Force"` + "`" + `, { stdio: "pipe" });
 
-  const outputPath = join(outPath, ADDON_NAME + ".mcaddon");
+  const outputPath = join(outPath, releaseName + ".mcaddon");
   renameSync(addonZip, outputPath);
   rmSync(tempDir, { recursive: true });
   console.log("Created " + outputPath);
@@ -420,10 +515,14 @@ function readEnv(key) {
 const cmd = process.argv[2];
 if (cmd === "dev") dev();
 else if (cmd === "prod") prod();
+else if (cmd === "compile") build();
 else {
-  console.log("Usage: node scripts/deploy.js <dev|prod>");
-  console.log("  dev   - Build and deploy to Minecraft development folders");
-  console.log("  prod  - Build and create .mcaddon for distribution");
+  console.log("Usage: node scripts/deploy.js <dev|prod|compile>");
+  console.log("  dev     - Build and deploy to Minecraft development folders");
+  console.log("  prod    - Build and create .mcaddon for distribution");
+  console.log("  compile - Copy/compile scripts only (used by npm run build)");
+  console.log("");
+  console.log("To package interactively, run: npm run bundle");
   process.exit(1);
 }
 `
