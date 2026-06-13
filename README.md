@@ -189,7 +189,7 @@ Diagnoses common reasons Bedrock packs fail to load. Runs workspace validation a
 ### `distribute_addon`
 Packages behavior/resource packs into a `.mcaddon` archive, deploys to Minecraft development folders, or both (`action=package`, `deploy`, or `both`).
 
-**Dev-suffix handling (`dev_pack`):** Mirrors the generated `bundle.js` from `scaffold_addon`. Pass `dev_pack=true` to ensure `header.name` ends with `-dev` in the package/deploy output; pass `dev_pack=false` to strip it. Omit the field to auto-detect from the current `header.name` (a `-dev` suffix implies dev). A staging copy of the workspace is used during the operation and the source manifest is restored on completion — your working tree is never mutated. The response includes a `dev_suffix` block reporting the original/final name and whether it changed for each pack.
+**Dev-suffix handling (`dev_pack`, required for package/both):** Mirrors `npm run bundle` from `scaffold_addon`. Before packaging, the agent must ask whether this is a dev pack: `dev_pack=false` strips `-dev` from manifest `header.name` and the `.mcaddon` filename (production release); `dev_pack=true` ensures `-dev` on both (dev release). Deploy-only (`action=deploy`) copies packs as-is and does not use `dev_pack`. A staging copy is used when manifest names need to change — source files are never modified. The response includes a `dev_suffix` block when packaging.
 
 ---
 ### MCP Resources

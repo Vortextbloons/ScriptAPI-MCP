@@ -22,7 +22,7 @@ type DistributeAddonInput struct {
 	BPDestName  string `json:"bp_dest_name" mcp:"description='deploy/both mode: destination behavior pack folder name'"`
 	RPDestName  string `json:"rp_dest_name" mcp:"description='deploy/both mode: destination resource pack folder name'"`
 	DryRun      bool   `json:"dry_run" mcp:"description='If true, previews the operation without writing files'"`
-	DevPack     *bool  `json:"dev_pack" mcp:"description='If true, ensure header.name ends with -dev in the output; if false, strip -dev. Omit to auto-detect from current header.name (existing -dev suffix implies dev). Source manifest is restored after the operation.'"`
+	DevPack     *bool  `json:"dev_pack" mcp:"description='Required for package/both. Ask the user before packaging: true adds -dev to manifest names and .mcaddon filename; false strips -dev for production release. Ignored for deploy-only.'"`
 }
 
 type devSuffixEntry struct {
@@ -32,16 +32,15 @@ type devSuffixEntry struct {
 }
 
 type devSuffixReport struct {
-	Requested string                  `json:"requested"`
-	Detected  *bool                   `json:"detected,omitempty"`
-	BP        *devSuffixEntry         `json:"bp,omitempty"`
-	RP        *devSuffixEntry         `json:"rp,omitempty"`
-	Source    string                  `json:"source"`
+	Requested string          `json:"requested"`
+	BP        *devSuffixEntry `json:"bp,omitempty"`
+	RP        *devSuffixEntry `json:"rp,omitempty"`
+	Source    string          `json:"source"`
 }
 
 func RegisterDistributeAddon(server *mcp.Server) error {
 	return server.RegisterTool("distribute_addon",
-		"Packages an addon workspace into a .mcaddon archive, deploys it to Minecraft development folders, or both. Use action=package (default), deploy, or both. Set dev_pack=true/false to add or strip the -dev suffix from manifest header.name; omit to auto-detect.",
+		"Packages an addon workspace into a .mcaddon archive, deploys it to Minecraft development folders, or both. Use action=package (default), deploy, or both. For package/both, ask the user 'Is this a dev pack?' (same as npm run bundle): dev_pack=true adds -dev to manifest header.name and the .mcaddon filename; dev_pack=false strips -dev for a production release. Source manifests are never modified.",
 		func(args DistributeAddonInput) (*mcp.ToolResponse, error) {
 			return handleDistributeAddon(args)
 		})
@@ -58,9 +57,22 @@ func handleDistributeAddon(args DistributeAddonInput) (*mcp.ToolResponse, error)
 		action = "package"
 	}
 
-	effectivePath, report, restore, err := prepareDevSuffix(projectPath, args.DevPack, args.DryRun)
-	if err != nil {
-		return toolErrorResponse("MANIFEST_PATCH_FAILED", err.Error(), false), nil
+	packagesAddon := action == "package" || action == "both"
+	var effectivePath string
+	var report *devSuffixReport
+	var restore func()
+
+	if packagesAddon {
+		if args.DevPack == nil {
+			return toolErrorResponse("INVALID_INPUT", "Ask the user whether this is a dev pack, then pass dev_pack=true or dev_pack=false", false), nil
+		}
+		var err error
+		effectivePath, report, restore, err = prepareDevSuffix(projectPath, *args.DevPack, args.DryRun)
+		if err != nil {
+			return toolErrorResponse("MANIFEST_PATCH_FAILED", err.Error(), false), nil
+		}
+	} else {
+		effectivePath = projectPath
 	}
 	if restore != nil {
 		defer restore()
@@ -92,6 +104,7 @@ func handleDistributeAddon(args DistributeAddonInput) (*mcp.ToolResponse, error)
 		if outputPath == "" {
 			return toolErrorResponse("INVALID_INPUT", "output_path is required for package mode", false), nil
 		}
+		outputPath = applyDevSuffixToOutputPath(outputPath, *args.DevPack)
 		mcdev := strings.TrimSpace(args.MCDevPath)
 		if mcdev == "" {
 			return toolErrorResponse("INVALID_INPUT", "mcdev_path is required for deploy mode", false), nil
@@ -126,6 +139,7 @@ func handleDistributeAddon(args DistributeAddonInput) (*mcp.ToolResponse, error)
 		if outputPath == "" {
 			return toolErrorResponse("INVALID_INPUT", "output_path is required for package mode", false), nil
 		}
+		outputPath = applyDevSuffixToOutputPath(outputPath, *args.DevPack)
 		pkgArgs := PackageAddonInput{
 			ProjectPath: effectivePath,
 			OutputPath:  outputPath,
@@ -146,7 +160,7 @@ func handleDistributeAddon(args DistributeAddonInput) (*mcp.ToolResponse, error)
 	return mcp.NewToolResponse(mcp.NewTextContent(string(b))), nil
 }
 
-func prepareDevSuffix(projectPath string, devPack *bool, dryRun bool) (string, *devSuffixReport, func(), error) {
+func prepareDevSuffix(projectPath string, devPack bool, dryRun bool) (string, *devSuffixReport, func(), error) {
 	manifestPaths := collectManifestPaths(projectPath)
 	if len(manifestPaths) == 0 {
 		return projectPath, nil, nil, nil
@@ -175,31 +189,17 @@ func prepareDevSuffix(projectPath string, devPack *bool, dryRun bool) (string, *
 		return projectPath, nil, nil, nil
 	}
 
-	resolved := devPack
-	requested := "auto"
-	if resolved != nil {
-		if *resolved {
-			requested = "dev"
-		} else {
-			requested = "non-dev"
-		}
-	}
-
-	detected := detectDevFromManifests(parsed)
-	if resolved == nil {
-		d := detected
-		resolved = &d
+	requested := "non-dev"
+	if devPack {
+		requested = "dev"
 	}
 
 	report := &devSuffixReport{Requested: requested, Source: projectPath}
-	if devPack == nil {
-		report.Detected = &detected
-	}
 
 	anyChange := false
 	for i := range parsed {
 		current := strings.TrimSpace(parsed[i].Header.Name)
-		final := applyDevSuffix(current, *resolved)
+		final := applyDevSuffix(current, devPack)
 		entry := devSuffixEntry{Original: current, Final: final, Changed: final != current}
 		entries = append(entries, entry)
 		if i == 0 {
@@ -264,15 +264,6 @@ func collectManifestPaths(projectPath string) []string {
 	return paths
 }
 
-func detectDevFromManifests(manifests []models.Manifest) bool {
-	for _, m := range manifests {
-		if strings.HasSuffix(strings.TrimSpace(m.Header.Name), devSuffix) {
-			return true
-		}
-	}
-	return false
-}
-
 func applyDevSuffix(name string, isDev bool) string {
 	trimmed := strings.TrimSpace(name)
 	if isDev {
@@ -285,4 +276,18 @@ func applyDevSuffix(name string, isDev bool) string {
 		return strings.TrimSuffix(trimmed, devSuffix)
 	}
 	return trimmed
+}
+
+func applyDevSuffixToOutputPath(outputPath string, isDev bool) string {
+	outputPath = strings.TrimSpace(outputPath)
+	if outputPath == "" {
+		return outputPath
+	}
+	dir := filepath.Dir(outputPath)
+	base := filepath.Base(outputPath)
+	if !strings.HasSuffix(strings.ToLower(base), ".mcaddon") {
+		return applyDevSuffix(outputPath, isDev)
+	}
+	stem := strings.TrimSuffix(base, filepath.Ext(base))
+	return filepath.Join(dir, applyDevSuffix(stem, isDev)+".mcaddon")
 }

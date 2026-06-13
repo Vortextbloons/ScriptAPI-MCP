@@ -75,7 +75,7 @@ func TestApplyDevSuffix(t *testing.T) {
 
 func TestPrepareDevSuffix_NoManifests(t *testing.T) {
 	root := t.TempDir()
-	effective, report, restore, err := prepareDevSuffix(root, boolPtr(true), false)
+	effective, report, restore, err := prepareDevSuffix(root, true, false)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -94,7 +94,7 @@ func TestPrepareDevSuffix_EmptyNameNoOp(t *testing.T) {
 	root := t.TempDir()
 	writeManifest(t, root, "behavior_pack", `{"format_version":2,"header":{"name":"","description":"d","uuid":"11111111-1111-1111-1111-111111111111","version":[1,0,0]},"modules":[]}`)
 
-	effective, report, restore, err := prepareDevSuffix(root, boolPtr(true), false)
+	effective, report, restore, err := prepareDevSuffix(root, true, false)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -106,12 +106,12 @@ func TestPrepareDevSuffix_EmptyNameNoOp(t *testing.T) {
 	}
 }
 
-func TestPrepareDevSuffix_AutoDetectNonDev(t *testing.T) {
+func TestPrepareDevSuffix_ExplicitFalse_NoChange(t *testing.T) {
 	root := t.TempDir()
 	writeManifest(t, root, "behavior_pack", sampleBPManifest)
 	writeManifest(t, root, "resource_pack", sampleRPManifest)
 
-	effective, report, restore, err := prepareDevSuffix(root, nil, false)
+	effective, report, restore, err := prepareDevSuffix(root, false, false)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -122,11 +122,8 @@ func TestPrepareDevSuffix_AutoDetectNonDev(t *testing.T) {
 	if report == nil {
 		t.Fatal("expected report")
 	}
-	if report.Requested != "auto" {
-		t.Errorf("Requested = %q, want auto", report.Requested)
-	}
-	if report.Detected == nil || *report.Detected {
-		t.Fatalf("Detected = %+v, want pointer to false", report.Detected)
+	if report.Requested != "non-dev" {
+		t.Errorf("Requested = %q, want non-dev", report.Requested)
 	}
 	if report.BP == nil || report.BP.Changed || report.BP.Final != "MyAddon" {
 		t.Errorf("BP entry unexpected: %+v", report.BP)
@@ -135,18 +132,17 @@ func TestPrepareDevSuffix_AutoDetectNonDev(t *testing.T) {
 		t.Errorf("RP entry unexpected: %+v", report.RP)
 	}
 
-	// Source already matches detected state (no -dev suffix), so no staging needed.
 	if effective != root {
-		t.Fatalf("expected unchanged path on auto-detect non-dev, got %q", effective)
+		t.Fatalf("expected unchanged path when names already match non-dev, got %q", effective)
 	}
 }
 
-func TestPrepareDevSuffix_AutoDetectDev(t *testing.T) {
+func TestPrepareDevSuffix_ExplicitTrue_AlreadyDev(t *testing.T) {
 	root := t.TempDir()
 	body := strings.Replace(sampleBPManifest, `"name":"MyAddon"`, `"name":"MyAddon-dev"`, 1)
 	writeManifest(t, root, "behavior_pack", body)
 
-	effective, report, restore, err := prepareDevSuffix(root, nil, false)
+	effective, report, restore, err := prepareDevSuffix(root, true, false)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -154,8 +150,8 @@ func TestPrepareDevSuffix_AutoDetectDev(t *testing.T) {
 		restore()
 	}
 
-	if report == nil || report.Detected == nil || !*report.Detected {
-		t.Fatalf("expected Detected=true, got %+v", report)
+	if report == nil || report.Requested != "dev" {
+		t.Fatalf("expected Requested=dev, got %+v", report)
 	}
 	if report.BP == nil || report.BP.Changed || report.BP.Final != "MyAddon-dev" {
 		t.Errorf("BP entry unexpected: %+v", report.BP)
@@ -164,9 +160,8 @@ func TestPrepareDevSuffix_AutoDetectDev(t *testing.T) {
 		t.Errorf("expected nil RP, got %+v", report.RP)
 	}
 
-	// Source already ends in -dev, matches detected state, no staging needed.
 	if effective != root {
-		t.Fatalf("expected unchanged path on auto-detect dev, got %q", effective)
+		t.Fatalf("expected unchanged path when names already match dev, got %q", effective)
 	}
 }
 
@@ -175,7 +170,7 @@ func TestPrepareDevSuffix_ExplicitTrue_AddsSuffix(t *testing.T) {
 	writeManifest(t, root, "behavior_pack", sampleBPManifest)
 	writeManifest(t, root, "resource_pack", sampleRPManifest)
 
-	effective, report, restore, err := prepareDevSuffix(root, boolPtr(true), false)
+	effective, report, restore, err := prepareDevSuffix(root, true, false)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -186,9 +181,6 @@ func TestPrepareDevSuffix_ExplicitTrue_AddsSuffix(t *testing.T) {
 	}
 	if report.Requested != "dev" {
 		t.Errorf("Requested = %q, want dev", report.Requested)
-	}
-	if report.Detected != nil {
-		t.Errorf("Detected should be nil when explicit, got %+v", report.Detected)
 	}
 	if report.BP == nil || !report.BP.Changed || report.BP.Final != "MyAddon-dev" {
 		t.Errorf("BP unexpected: %+v", report.BP)
@@ -225,7 +217,7 @@ func TestPrepareDevSuffix_ExplicitFalse_StripsSuffix(t *testing.T) {
 	writeManifest(t, root, "behavior_pack", bpBody)
 	writeManifest(t, root, "resource_pack", rpBody)
 
-	effective, report, restore, err := prepareDevSuffix(root, boolPtr(false), false)
+	effective, report, restore, err := prepareDevSuffix(root, false, false)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -254,7 +246,7 @@ func TestPrepareDevSuffix_IdempotentSkip(t *testing.T) {
 	bpBody := strings.Replace(sampleBPManifest, `"name":"MyAddon"`, `"name":"MyAddon-dev"`, 1)
 	writeManifest(t, root, "behavior_pack", bpBody)
 
-	effective, report, restore, err := prepareDevSuffix(root, boolPtr(true), false)
+	effective, report, restore, err := prepareDevSuffix(root, true, false)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -274,7 +266,7 @@ func TestPrepareDevSuffix_DryRunDoesNotStage(t *testing.T) {
 	root := t.TempDir()
 	writeManifest(t, root, "behavior_pack", sampleBPManifest)
 
-	effective, report, restore, err := prepareDevSuffix(root, boolPtr(true), true)
+	effective, report, restore, err := prepareDevSuffix(root, true, true)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -289,6 +281,28 @@ func TestPrepareDevSuffix_DryRunDoesNotStage(t *testing.T) {
 	}
 }
 
+func TestApplyDevSuffixToOutputPath(t *testing.T) {
+	cases := []struct {
+		name   string
+		input  string
+		isDev  bool
+		expect string
+	}{
+		{"production strips suffix from mcaddon name", `C:\out\MyAddon-dev.mcaddon`, false, `C:\out\MyAddon.mcaddon`},
+		{"dev adds suffix to mcaddon name", `C:\out\MyAddon.mcaddon`, true, `C:\out\MyAddon-dev.mcaddon`},
+		{"idempotent dev mcaddon path", `C:\out\MyAddon-dev.mcaddon`, true, `C:\out\MyAddon-dev.mcaddon`},
+		{"idempotent production mcaddon path", `C:\out\MyAddon.mcaddon`, false, `C:\out\MyAddon.mcaddon`},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := applyDevSuffixToOutputPath(c.input, c.isDev)
+			if got != c.expect {
+				t.Errorf("applyDevSuffixToOutputPath(%q, %v) = %q, want %q", c.input, c.isDev, got, c.expect)
+			}
+		})
+	}
+}
+
 func TestPrepareDevSuffix_InvalidManifest(t *testing.T) {
 	root := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(root, "behavior_pack"), 0o755); err != nil {
@@ -298,7 +312,7 @@ func TestPrepareDevSuffix_InvalidManifest(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, _, _, err := prepareDevSuffix(root, boolPtr(true), false)
+	_, _, _, err := prepareDevSuffix(root, true, false)
 	if err == nil {
 		t.Fatal("expected error for invalid manifest JSON")
 	}
@@ -307,4 +321,3 @@ func TestPrepareDevSuffix_InvalidManifest(t *testing.T) {
 	}
 }
 
-func boolPtr(b bool) *bool { return &b }
