@@ -1,7 +1,7 @@
 # Bedrock Script API Helper MCP
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.9.0-blue?style=flat-square" alt="Version 1.9.0">
+  <img src="https://img.shields.io/badge/version-1.9.1-blue?style=flat-square" alt="Version 1.9.1">
   <img src="https://img.shields.io/badge/go-1.26.2-00ADD8?style=flat-square&logo=go" alt="Go 1.26.2">
   <img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="MIT License">
   <img src="https://img.shields.io/badge/MCP-server-7B68EE?style=flat-square" alt="MCP Server">
@@ -19,7 +19,7 @@ All error responses are **structured JSON** with machine-readable codes, retryab
 | Tool | Description |
 |------|-------------|
 | `resolve_api_environment` | Resolves npm versions and recommends modules (`mode=resolve`), or lists publish versions (`mode=list-versions`) |
-| `search_api` | Queries TypeScript definitions from live npm packages |
+| `search_api` | Queries TypeScript definitions from npm (`source=registry`) or local `node_modules` (`source=local`) |
 | `manifest` | Diagnoses, auto-fixes, or syncs dependencies on `manifest.json` (`mode=diagnose`, `fix`, `sync-deps`) |
 | `scaffold_addon` | Full project scaffolding with deploy scripts and file output |
 | `diagnose_workspace` | Validates workspace and diagnoses pack loading issues |
@@ -73,7 +73,20 @@ Baseline sanity check before writing any code, or version discovery.
 Returns both `exact_npm_version` (for type lookups and API diffing) and `manifest_version` (for manifest dependencies) in resolve mode.
 
 ### `search_api`
-Fetches TypeScript definitions from live npm packages. Search by symbol name or member text match for a `@minecraft/*` module version.
+Searches TypeScript definitions for `@minecraft/*` packages.
+
+| Source | Behavior |
+|--------|----------|
+| `registry` (default) | Fetches live `.d.ts` from npm; requires `module` plus exact `version` or `minecraft_version` + `channel` |
+| `local` | Reads installed packages from `project_path/node_modules/@minecraft/*` (offline, matches installed versions) |
+
+| Mode | Behavior |
+|------|----------|
+| `types` (default) | Structured symbol extraction |
+| `members` | Grep-style substring match across `.d.ts` lines |
+| `index` | Lightweight export catalog (`source=local` only) |
+
+Local search supports `modules` (optional filter), `offset` + `limit` pagination (default 50, max 200), `skipped_modules` when a package cannot be read, and `NO_MATCH` when nothing matches.
 
 ### `manifest`
 Operates on a `manifest.json` string:

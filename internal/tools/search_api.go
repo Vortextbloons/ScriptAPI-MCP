@@ -12,14 +12,18 @@ import (
 )
 
 type SearchAPIInput struct {
-	Module          string `json:"module" mcp:"required,description='@minecraft module name (e.g. @minecraft/server)'"`
-	Version         string `json:"version" mcp:"description='Exact npm publish version (alternative to minecraft_version+channel)'"`
-	MinecraftVersion string `json:"minecraft_version" mcp:"description='Target Minecraft game version (e.g. 1.21.70). Used with channel to resolve npm version automatically when version is not provided.'"`
-	Channel         string `json:"channel" mcp:"description='Version channel when using minecraft_version: stable, beta, or preview (default beta)'"`
-	Query           string `json:"query" mcp:"required,description='types mode: symbol name (e.g. Player, world.afterEvents). members mode: arbitrary substring to match in .d.ts lines.'"`
-	Mode            string `json:"mode" mcp:"description='Search mode: types (structured symbol extraction, default) or members (grep-style substring match)'"`
-	Limit           int    `json:"limit" mcp:"description='Max results (default 50)'"`
-	ContextLines    int    `json:"context_lines" mcp:"description='members mode only: number of surrounding lines to include for each match (default 0)'"`
+	Module           string   `json:"module" mcp:"description='source=registry: required @minecraft module name (e.g. @minecraft/server). source=local: optional when modules is supplied or when auto-scanning.'"`
+	Version          string   `json:"version" mcp:"description='source=registry only: exact npm publish version (alternative to minecraft_version+channel)'"`
+	MinecraftVersion string   `json:"minecraft_version" mcp:"description='source=registry only: target Minecraft game version (e.g. 1.21.70). Used with channel to resolve npm version automatically when version is not provided.'"`
+	Channel          string   `json:"channel" mcp:"description='source=registry only: version channel when using minecraft_version: stable, beta, or preview (default beta)'"`
+	Source           string   `json:"source" mcp:"description='Data source: registry (default, fetch from npm) or local (read from project_path/node_modules/@minecraft/*)'"`
+	ProjectPath      string   `json:"project_path" mcp:"description='source=local only: project root containing node_modules. Required when source=local.'"`
+	Modules          []string `json:"modules" mcp:"description='source=local only: explicit module list. If omitted, scans all installed @minecraft/*.'"`
+	Query            string   `json:"query" mcp:"required,description='types mode: symbol name (e.g. Player, world.afterEvents). members/index modes: arbitrary substring to match in .d.ts lines.'"`
+	Mode             string   `json:"mode" mcp:"description='Search mode: types (structured symbol extraction, default) | members (grep-style substring match) | index (lightweight export catalog, no bodies)'"`
+	Limit            int      `json:"limit" mcp:"description='Max results (default 50, max 200)'"`
+	Offset           int      `json:"offset" mcp:"description='source=local only: pagination offset (default 0)'"`
+	ContextLines     int      `json:"context_lines" mcp:"description='source=registry members mode only: number of surrounding lines to include for each match (default 0)'"`
 }
 
 type SearchAPIMatch struct {
@@ -30,16 +34,43 @@ type SearchAPIMatch struct {
 
 func RegisterSearchAPI(server *mcp.Server, npmClient *npm.Client) error {
 	return server.RegisterTool("search_api",
-		"Searches TypeScript definitions from a live @minecraft/* npm package. Use mode=types for structured symbol lookup (class/interface/namespace) or mode=members for grep-style substring matching across .d.ts lines. Accepts either an exact npm version or a Minecraft version + channel for automatic resolution.",
+		"Searches TypeScript definitions for @minecraft/* packages. Two sources: 'registry' (default) fetches the live .d.ts from npm and requires an exact version or a Minecraft version + channel. 'local' reads from <project_path>/node_modules/@minecraft/* (offline, matches the user's installed version). Three modes: 'types' (structured symbol extraction, default), 'members' (grep-style substring match), and 'index' (lightweight export catalog, local only). Local calls accept an optional 'modules' list and 'offset' for pagination.",
 		func(args SearchAPIInput) (*mcp.ToolResponse, error) {
 			return handleSearchAPI(args, npmClient)
 		})
 }
 
 func handleSearchAPI(args SearchAPIInput, npmClient *npm.Client) (*mcp.ToolResponse, error) {
+	source := strings.ToLower(strings.TrimSpace(args.Source))
+	if source == "" {
+		source = "registry"
+	}
+	if source != "registry" && source != "local" {
+		return toolErrorResponse("INVALID_INPUT", fmt.Sprintf("unknown source %q (use registry or local)", args.Source), false, "Omit 'source' to use the default (registry)"), nil
+	}
+	if source == "local" {
+		return handleSearchAPILocal(args)
+	}
+	return handleSearchAPIRegistry(args, npmClient)
+}
+
+func handleSearchAPIRegistry(args SearchAPIInput, npmClient *npm.Client) (*mcp.ToolResponse, error) {
 	version := strings.TrimSpace(args.Version)
 	mcVersion := strings.TrimSpace(args.MinecraftVersion)
 	channel := strings.TrimSpace(args.Channel)
+	mode := strings.ToLower(strings.TrimSpace(args.Mode))
+	if mode == "" {
+		mode = "types"
+	}
+	if mode == "index" {
+		return toolErrorResponse("INVALID_INPUT", "mode=index is only supported for source=local", false, "Use mode=members for grep-style matching", "Use mode=types for structured symbol extraction"), nil
+	}
+
+	module := strings.TrimSpace(args.Module)
+	if module == "" {
+		return toolErrorResponse("INVALID_INPUT", "module is required for source=registry", false, "Provide a module like @minecraft/server"), nil
+	}
+	args.Module = module
 
 	if version == "" && mcVersion == "" {
 		return toolErrorResponse("INVALID_INPUT", "either version or minecraft_version is required", false, "Provide exact_npm_version from resolve_api_environment", "Or provide minecraft_version (e.g. 1.21.70) with optional channel"), nil
@@ -55,11 +86,6 @@ func handleSearchAPI(args SearchAPIInput, npmClient *npm.Client) (*mcp.ToolRespo
 			return toolErrorResponse("VERSION_RESOLVE_FAILED", fmt.Sprintf("no matching version for %s @ Minecraft %s (channel: %s): %v", args.Module, mcVersion, channel, err), false, "Try a different Minecraft version", "Try stable instead of beta", "Use resolve_api_environment with mode=list-versions to see available versions"), nil
 		}
 		version = resolved
-	}
-
-	mode := strings.ToLower(strings.TrimSpace(args.Mode))
-	if mode == "" {
-		mode = "types"
 	}
 
 	if ok, err := npmClient.LookupExactVersion(args.Module, version); err == nil && !ok {
@@ -81,9 +107,9 @@ func handleSearchAPI(args SearchAPIInput, npmClient *npm.Client) (*mcp.ToolRespo
 		return toolErrorResponse("FETCH_TYPES_FAILED", fmt.Sprintf("error fetching types for %s@%s: %v", args.Module, version, err), true, "Retry with the same version", "Confirm module name is valid"), nil
 	}
 
-	limit := args.Limit
-	if limit <= 0 {
-		limit = 50
+	limit, lerr := clampLimit(args.Limit)
+	if lerr != nil {
+		return toolErrorResponse("INVALID_INPUT", lerr.Error(), false), nil
 	}
 
 	switch mode {
@@ -153,4 +179,20 @@ func handleSearchAPI(args SearchAPIInput, npmClient *npm.Client) (*mcp.ToolRespo
 		}, "", "  ")
 		return mcp.NewToolResponse(mcp.NewTextContent(string(b))), nil
 	}
+}
+
+// clampLimit normalizes a user-supplied limit value to the allowed range.
+// Returns an error when the user requested a value above the hard cap.
+func clampLimit(n int) (int, error) {
+	const (
+		defaultLimit = 50
+		maxLimit     = 200
+	)
+	if n <= 0 {
+		return defaultLimit, nil
+	}
+	if n > maxLimit {
+		return 0, fmt.Errorf("limit %d exceeds max of %d", n, maxLimit)
+	}
+	return n, nil
 }

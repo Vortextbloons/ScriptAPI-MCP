@@ -92,3 +92,36 @@ func GetInstalledModule(projectPath string, moduleName string) (*InstalledModule
 		PackagePath:  modulePath,
 	}, nil
 }
+
+// GetInstalledMinecraftModules scans node_modules for all @minecraft/* modules.
+func GetInstalledMinecraftModules(projectPath string) ([]InstalledModule, error) {
+	projectPath = NormalizeProjectPath(projectPath)
+	nodeModulesPath := filepath.Join(projectPath, "node_modules", "@minecraft")
+
+	entries, err := os.ReadDir(nodeModulesPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return []InstalledModule{}, nil
+		}
+		return nil, fmt.Errorf("failed to read @minecraft modules: %w", err)
+	}
+
+	sort.Slice(entries, func(i, j int) bool {
+		return entries[i].Name() < entries[j].Name()
+	})
+
+	modules := make([]InstalledModule, 0, len(entries))
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		moduleName := "@minecraft/" + entry.Name()
+		installed, err := GetInstalledModule(projectPath, moduleName)
+		if err != nil {
+			continue
+		}
+		modules = append(modules, *installed)
+	}
+
+	return modules, nil
+}
