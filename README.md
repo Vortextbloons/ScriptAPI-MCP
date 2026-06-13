@@ -189,7 +189,17 @@ Diagnoses common reasons Bedrock packs fail to load. Runs workspace validation a
 ### `distribute_addon`
 Packages behavior/resource packs into a `.mcaddon` archive, deploys to Minecraft development folders, or both (`action=package`, `deploy`, or `both`).
 
-**Dev-suffix handling (`dev_pack`, required for package/both):** Mirrors `npm run bundle` from `scaffold_addon`. Before packaging, the agent must ask whether this is a dev pack: `dev_pack=false` strips `-dev` from manifest `header.name` and the `.mcaddon` filename (production release); `dev_pack=true` ensures `-dev` on both (dev release). Deploy-only (`action=deploy`) copies packs as-is and does not use `dev_pack`. A staging copy is used when manifest names need to change — source files are never modified. The response includes a `dev_suffix` block when packaging.
+**Project layout auto-detect:** The tool looks for the behavior pack, resource pack, and compiled scripts directory in this order:
+
+| Source | Default candidates | Override field |
+|---|---|---|
+| Behavior pack | `behavior_pack/`, `static/bp/`, `src/bp/`, `packs/bp/`, `addon/bp/` | `bp_source` |
+| Resource pack | `resource_pack/`, `static/rp/`, `src/rp/`, `packs/rp/`, `addon/rp/` | `rp_source` |
+| Compiled scripts | `dist/`, `build/` (merged into the BP at `scripts/` during packaging) | `scripts_source` |
+
+A pack is "found" when its `manifest.json` exists. Each pack is detected independently — a project can have the BP at the root and the RP at `static/rp/`. The resolved layout is reported under `layout` in the response.
+
+**Manifest suffix (`manifest_suffix`):** Pass `manifest_suffix=true` to ensure `header.name` ends with `-dev`; pass `false` to strip `-dev` for a production build. Omit the field (or pass `null`) to auto-detect from the current `header.name` (a `-dev` suffix implies dev). A staging copy of the workspace is used during the operation and the source manifests are restored on completion — your working tree is never mutated. The response includes a `dev_suffix` block reporting the original/final name and whether it changed for each pack. The `.mcaddon` filename gets a `-dev` suffix in dev mode (e.g. `MyAddon-dev.mcaddon`).
 
 ---
 ### MCP Resources

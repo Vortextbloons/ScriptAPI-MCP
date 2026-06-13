@@ -1,6 +1,7 @@
 package tools
 
 import (
+	"archive/zip"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -48,6 +49,14 @@ func readName(t *testing.T, path string) string {
 	return m.Header.Name
 }
 
+func conventionalLayout() PackLayout {
+	return PackLayout{BPSource: "behavior_pack", RPSource: "resource_pack"}
+}
+
+func staticLayout(scriptsSrc string) PackLayout {
+	return PackLayout{BPSource: "static/bp", RPSource: "static/rp", ScriptsSource: scriptsSrc}
+}
+
 func TestApplyDevSuffix(t *testing.T) {
 	cases := []struct {
 		name   string
@@ -75,7 +84,7 @@ func TestApplyDevSuffix(t *testing.T) {
 
 func TestPrepareDevSuffix_NoManifests(t *testing.T) {
 	root := t.TempDir()
-	effective, report, restore, err := prepareDevSuffix(root, true, false)
+	effective, report, restore, err := prepareDevSuffix(root, PackLayout{}, true, false)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -94,7 +103,7 @@ func TestPrepareDevSuffix_EmptyNameNoOp(t *testing.T) {
 	root := t.TempDir()
 	writeManifest(t, root, "behavior_pack", `{"format_version":2,"header":{"name":"","description":"d","uuid":"11111111-1111-1111-1111-111111111111","version":[1,0,0]},"modules":[]}`)
 
-	effective, report, restore, err := prepareDevSuffix(root, true, false)
+	effective, report, restore, err := prepareDevSuffix(root, conventionalLayout(), true, false)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -111,7 +120,7 @@ func TestPrepareDevSuffix_ExplicitFalse_NoChange(t *testing.T) {
 	writeManifest(t, root, "behavior_pack", sampleBPManifest)
 	writeManifest(t, root, "resource_pack", sampleRPManifest)
 
-	effective, report, restore, err := prepareDevSuffix(root, false, false)
+	effective, report, restore, err := prepareDevSuffix(root, conventionalLayout(), false, false)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -142,7 +151,7 @@ func TestPrepareDevSuffix_ExplicitTrue_AlreadyDev(t *testing.T) {
 	body := strings.Replace(sampleBPManifest, `"name":"MyAddon"`, `"name":"MyAddon-dev"`, 1)
 	writeManifest(t, root, "behavior_pack", body)
 
-	effective, report, restore, err := prepareDevSuffix(root, true, false)
+	effective, report, restore, err := prepareDevSuffix(root, conventionalLayout(), true, false)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -170,7 +179,7 @@ func TestPrepareDevSuffix_ExplicitTrue_AddsSuffix(t *testing.T) {
 	writeManifest(t, root, "behavior_pack", sampleBPManifest)
 	writeManifest(t, root, "resource_pack", sampleRPManifest)
 
-	effective, report, restore, err := prepareDevSuffix(root, true, false)
+	effective, report, restore, err := prepareDevSuffix(root, conventionalLayout(), true, false)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -193,7 +202,6 @@ func TestPrepareDevSuffix_ExplicitTrue_AddsSuffix(t *testing.T) {
 		t.Fatal("expected staging path")
 	}
 
-	// Source manifest should be untouched.
 	if name := readName(t, filepath.Join(root, "behavior_pack", "manifest.json")); name != "MyAddon" {
 		t.Errorf("source BP name mutated: %q", name)
 	}
@@ -201,7 +209,6 @@ func TestPrepareDevSuffix_ExplicitTrue_AddsSuffix(t *testing.T) {
 		t.Errorf("source RP name mutated: %q", name)
 	}
 
-	// Staging manifests should reflect the patch.
 	if name := readName(t, filepath.Join(effective, "behavior_pack", "manifest.json")); name != "MyAddon-dev" {
 		t.Errorf("staged BP name: %q", name)
 	}
@@ -217,7 +224,7 @@ func TestPrepareDevSuffix_ExplicitFalse_StripsSuffix(t *testing.T) {
 	writeManifest(t, root, "behavior_pack", bpBody)
 	writeManifest(t, root, "resource_pack", rpBody)
 
-	effective, report, restore, err := prepareDevSuffix(root, false, false)
+	effective, report, restore, err := prepareDevSuffix(root, conventionalLayout(), false, false)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -246,7 +253,7 @@ func TestPrepareDevSuffix_IdempotentSkip(t *testing.T) {
 	bpBody := strings.Replace(sampleBPManifest, `"name":"MyAddon"`, `"name":"MyAddon-dev"`, 1)
 	writeManifest(t, root, "behavior_pack", bpBody)
 
-	effective, report, restore, err := prepareDevSuffix(root, true, false)
+	effective, report, restore, err := prepareDevSuffix(root, conventionalLayout(), true, false)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -266,7 +273,7 @@ func TestPrepareDevSuffix_DryRunDoesNotStage(t *testing.T) {
 	root := t.TempDir()
 	writeManifest(t, root, "behavior_pack", sampleBPManifest)
 
-	effective, report, restore, err := prepareDevSuffix(root, true, true)
+	effective, report, restore, err := prepareDevSuffix(root, conventionalLayout(), true, true)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -312,7 +319,7 @@ func TestPrepareDevSuffix_InvalidManifest(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, _, _, err := prepareDevSuffix(root, true, false)
+	_, _, _, err := prepareDevSuffix(root, conventionalLayout(), true, false)
 	if err == nil {
 		t.Fatal("expected error for invalid manifest JSON")
 	}
@@ -321,3 +328,212 @@ func TestPrepareDevSuffix_InvalidManifest(t *testing.T) {
 	}
 }
 
+func TestResolvePackLayout_Conventional(t *testing.T) {
+	root := t.TempDir()
+	writeManifest(t, root, "behavior_pack", sampleBPManifest)
+	writeManifest(t, root, "resource_pack", sampleRPManifest)
+
+	got, err := resolvePackLayout(root, "", "", "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got.BPSource != "behavior_pack" || got.RPSource != "resource_pack" {
+		t.Errorf("unexpected layout: %+v", got)
+	}
+	if got.ScriptsSource != "" {
+		t.Errorf("expected no scripts source, got %q", got.ScriptsSource)
+	}
+}
+
+func TestResolvePackLayout_StaticBPRP(t *testing.T) {
+	root := t.TempDir()
+	writeManifest(t, root, "static/bp", sampleBPManifest)
+	writeManifest(t, root, "static/rp", sampleRPManifest)
+
+	got, err := resolvePackLayout(root, "", "", "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got.BPSource != "static/bp" || got.RPSource != "static/rp" {
+		t.Errorf("unexpected layout: %+v", got)
+	}
+}
+
+func TestResolvePackLayout_StaticBP_DetectsDistScripts(t *testing.T) {
+	root := t.TempDir()
+	writeManifest(t, root, "static/bp", sampleBPManifest)
+	writeManifest(t, root, "static/rp", sampleRPManifest)
+	if err := os.MkdirAll(filepath.Join(root, "dist"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "dist", "index.js"), []byte("console.log(1)"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := resolvePackLayout(root, "", "", "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got.ScriptsSource != "dist" {
+		t.Errorf("expected scripts_source=dist, got %q", got.ScriptsSource)
+	}
+}
+
+func TestResolvePackLayout_Mixed(t *testing.T) {
+	root := t.TempDir()
+	writeManifest(t, root, "behavior_pack", sampleBPManifest)
+	writeManifest(t, root, "static/rp", sampleRPManifest)
+
+	got, err := resolvePackLayout(root, "", "", "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got.BPSource != "behavior_pack" {
+		t.Errorf("BP should be conventional, got %q", got.BPSource)
+	}
+	if got.RPSource != "static/rp" {
+		t.Errorf("RP should be static/rp, got %q", got.RPSource)
+	}
+}
+
+func TestResolvePackLayout_OverrideWins(t *testing.T) {
+	root := t.TempDir()
+	writeManifest(t, root, "behavior_pack", sampleBPManifest)
+	writeManifest(t, root, "static/bp", sampleBPManifest)
+
+	got, err := resolvePackLayout(root, "static/bp", "", "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got.BPSource != "static/bp" {
+		t.Errorf("override should win, got %q", got.BPSource)
+	}
+}
+
+func TestResolvePackLayout_PathTraversalBlocked(t *testing.T) {
+	root := t.TempDir()
+	writeManifest(t, root, "behavior_pack", sampleBPManifest)
+
+	_, err := resolvePackLayout(root, "../escape", "", "")
+	if err == nil {
+		t.Fatal("expected error for path traversal")
+	}
+}
+
+func TestPackageAddon_StaticLayout_WithScriptsSource(t *testing.T) {
+	root := t.TempDir()
+	writeManifest(t, root, "static/bp", sampleBPManifest)
+	writeManifest(t, root, "static/rp", sampleRPManifest)
+	if err := os.MkdirAll(filepath.Join(root, "dist"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "dist", "index.js"), []byte("compiled"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	out := filepath.Join(t.TempDir(), "addon.mcaddon")
+	pkg, err := packageAddon(PackageAddonInput{
+		ProjectPath:   root,
+		OutputPath:    out,
+		BPSource:      "static/bp",
+		RPSource:      "static/rp",
+		ScriptsSource: "dist",
+	})
+	if err != nil {
+		t.Fatalf("packageAddon failed: %v", err)
+	}
+	if pkg.BPIncluded == 0 || pkg.RPIncluded == 0 || pkg.ScriptsIncluded == 0 {
+		t.Errorf("expected all three sources to contribute, got %+v", pkg)
+	}
+
+	entries := readZipEntries(t, out)
+	wantScripts := []string{"static/bp/manifest.json", "static/rp/manifest.json", "scripts/index.js"}
+	for _, w := range wantScripts {
+		found := false
+		for _, e := range entries {
+			if e == w {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("expected entry %q in zip, got %v", w, entries)
+		}
+	}
+}
+
+func TestPackageAddon_StaticLayout_DefaultAutoDetect(t *testing.T) {
+	root := t.TempDir()
+	writeManifest(t, root, "static/bp", sampleBPManifest)
+	writeManifest(t, root, "static/rp", sampleRPManifest)
+
+	layout, err := resolvePackLayout(root, "", "", "")
+	if err != nil {
+		t.Fatalf("resolvePackLayout failed: %v", err)
+	}
+
+	out := filepath.Join(t.TempDir(), "addon.mcaddon")
+	pkg, err := packageAddon(PackageAddonInput{
+		ProjectPath: root,
+		OutputPath:  out,
+		BPSource:    layout.BPSource,
+		RPSource:    layout.RPSource,
+	})
+	if err != nil {
+		t.Fatalf("packageAddon failed: %v", err)
+	}
+	if pkg.BPIncluded == 0 || pkg.RPIncluded == 0 {
+		t.Errorf("expected auto-detected sources to contribute, got %+v", pkg)
+	}
+}
+
+func TestPrepareDevSuffix_StaticLayout_StripsDev(t *testing.T) {
+	root := t.TempDir()
+	bpBody := strings.Replace(sampleBPManifest, `"name":"MyAddon"`, `"name":"Tau Gem Upgrades BP 2.8.3-Beta-dev"`, 1)
+	rpBody := strings.Replace(sampleRPManifest, `"name":"MyAddon RP"`, `"name":"Tau Gem Upgrades RP 2.8.3-Beta-dev"`, 1)
+	writeManifest(t, root, "static/bp", bpBody)
+	writeManifest(t, root, "static/rp", rpBody)
+
+	layout := staticLayout("")
+	effective, report, restore, err := prepareDevSuffix(root, layout, false, false)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	defer restore()
+
+	if report == nil || report.BP == nil || report.RP == nil {
+		t.Fatalf("expected BP and RP entries, got %+v", report)
+	}
+	if report.BP.Final != "Tau Gem Upgrades BP 2.8.3-Beta" {
+		t.Errorf("BP final = %q, want suffix stripped", report.BP.Final)
+	}
+	if report.RP.Final != "Tau Gem Upgrades RP 2.8.3-Beta" {
+		t.Errorf("RP final = %q, want suffix stripped", report.RP.Final)
+	}
+	if !report.BP.Changed || !report.RP.Changed {
+		t.Errorf("expected both to report changed=true, got %+v", report)
+	}
+
+	// Source untouched.
+	if name := readName(t, filepath.Join(root, "static/bp", "manifest.json")); !strings.HasSuffix(name, "-dev") {
+		t.Errorf("source BP name should retain -dev, got %q", name)
+	}
+	// Staging copy has the patched names.
+	if name := readName(t, filepath.Join(effective, "static/bp", "manifest.json")); strings.HasSuffix(name, "-dev") {
+		t.Errorf("staged BP name should have -dev stripped, got %q", name)
+	}
+}
+
+func readZipEntries(t *testing.T, path string) []string {
+	t.Helper()
+	r, err := zip.OpenReader(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer r.Close()
+	out := make([]string, 0, len(r.File))
+	for _, f := range r.File {
+		out = append(out, f.Name)
+	}
+	return out
+}

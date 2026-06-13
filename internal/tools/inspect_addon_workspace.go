@@ -17,6 +17,8 @@ type InspectAddonWorkspaceOutput struct {
 	Entrypoint       string   `json:"entrypoint,omitempty"`
 	SourceEntrypoint string   `json:"source_entrypoint,omitempty"`
 	Modules          []string `json:"modules"`
+	BPSource         string   `json:"bp_source,omitempty"`
+	RPSource         string   `json:"rp_source,omitempty"`
 	Warnings         []string `json:"warnings,omitempty"`
 }
 
@@ -26,11 +28,22 @@ func inspectAddonWorkspace(projectPath string) (*InspectAddonWorkspaceOutput, er
 		return nil, fmt.Errorf("project_path is required")
 	}
 
-	bpManifestPath := filepath.Join(projectPath, "behavior_pack", "manifest.json")
-	rpManifestPath := filepath.Join(projectPath, "resource_pack", "manifest.json")
+	layout, err := resolvePackLayout(projectPath, "", "", "")
+	if err != nil {
+		return nil, err
+	}
+	if layout.BPSource == "" {
+		return nil, fmt.Errorf("behavior pack manifest not found (checked behavior_pack/, static/bp/, src/bp/, packs/bp/, addon/bp/)")
+	}
+
+	bpManifestPath := filepath.Join(projectPath, filepath.FromSlash(layout.BPSource), "manifest.json")
+	rpManifestPath := ""
+	if layout.RPSource != "" {
+		rpManifestPath = filepath.Join(projectPath, filepath.FromSlash(layout.RPSource), "manifest.json")
+	}
 
 	hasBP := fileExists(bpManifestPath)
-	hasRP := fileExists(rpManifestPath)
+	hasRP := rpManifestPath != "" && fileExists(rpManifestPath)
 	if !hasBP {
 		return nil, fmt.Errorf("behavior pack manifest not found at %s", bpManifestPath)
 	}
@@ -67,11 +80,16 @@ func inspectAddonWorkspace(projectPath string) (*InspectAddonWorkspaceOutput, er
 	} else if fileExists(filepath.Join(projectPath, "src", "main.js")) {
 		lang = "javascript"
 		source = "src/main.js"
+	} else if hasTSFiles(filepath.Join(projectPath, "src")) {
+		lang = "typescript"
 	}
 
 	warnings := make([]string, 0)
-	if entry != "" && !fileExists(filepath.Join(projectPath, "behavior_pack", filepath.FromSlash(entry))) {
-		warnings = append(warnings, fmt.Sprintf("script entrypoint %q does not exist in behavior_pack", entry))
+	if entry != "" {
+		entryAbs := filepath.Join(projectPath, filepath.FromSlash(layout.BPSource), filepath.FromSlash(entry))
+		if !fileExists(entryAbs) {
+			warnings = append(warnings, fmt.Sprintf("script entrypoint %q does not exist in %s", entry, layout.BPSource))
+		}
 	}
 
 	return &InspectAddonWorkspaceOutput{
@@ -82,8 +100,25 @@ func inspectAddonWorkspace(projectPath string) (*InspectAddonWorkspaceOutput, er
 		Entrypoint:       entry,
 		SourceEntrypoint: source,
 		Modules:          modules,
+		BPSource:         layout.BPSource,
+		RPSource:         layout.RPSource,
 		Warnings:         warnings,
 	}, nil
+}
+
+func hasTSFiles(dir string) bool {
+	found := false
+	_ = filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
+		if err != nil || info == nil || info.IsDir() {
+			return nil
+		}
+		if strings.HasSuffix(path, ".ts") {
+			found = true
+			return filepath.SkipAll
+		}
+		return nil
+	})
+	return found
 }
 
 func fileExists(path string) bool {

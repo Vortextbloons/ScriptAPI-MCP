@@ -17,9 +17,9 @@ type VersionInfoInput struct{}
 
 func RegisterVersionInfo(server *mcp.Server) error {
 	return server.RegisterTool("get_mcp_version",
-		"Returns the current MCP name and version so the AI can report it back accurately.",
+		"Returns the current MCP name (includes version) and version string so the AI can report it back accurately.",
 		func(args VersionInfoInput) (*mcp.ToolResponse, error) {
-			out := VersionInfoOutput{Name: version.Name, Version: version.Current}
+			out := VersionInfoOutput{Name: version.DisplayName(), Version: version.Current}
 			b, _ := json.MarshalIndent(out, "", "  ")
 			return mcp.NewToolResponse(mcp.NewTextContent(string(b))), nil
 		})

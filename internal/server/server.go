@@ -21,7 +21,7 @@ func New() (*mcp.Server, error) {
 // NewWithTransport creates and configures the MCP server with a custom transport.
 func NewWithTransport(tr transport.Transport) (*mcp.Server, error) {
 	server := mcp.NewServer(tr,
-		mcp.WithName(version.Name),
+		mcp.WithName(version.DisplayName()),
 		mcp.WithVersion(version.Current),
 	)
 
