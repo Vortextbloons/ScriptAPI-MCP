@@ -73,10 +73,6 @@ func RegisterDiagnoseWorkspace(server *mcp.Server) error {
 		})
 }
 
-type ValidateAddonWorkspaceInput struct {
-	ProjectPath string `json:"project_path" mcp:"required,description='Path to addon workspace root'"`
-}
-
 type WorkspaceFinding struct {
 	Severity string `json:"severity"`
 	Rule     string `json:"rule"`

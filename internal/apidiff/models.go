@@ -4,17 +4,15 @@ package apidiff
 type SymbolKind string
 
 const (
-	KindClass       SymbolKind = "class"
-	KindInterface   SymbolKind = "interface"
-	KindNamespace   SymbolKind = "namespace"
-	KindEnum        SymbolKind = "enum"
-	KindFunction    SymbolKind = "function"
-	KindType        SymbolKind = "type"
-	KindVariable    SymbolKind = "variable"
-	KindProperty    SymbolKind = "property"
-	KindMethod      SymbolKind = "method"
-	KindConstructor SymbolKind = "constructor"
-	KindEvent       SymbolKind = "event"
+	KindClass     SymbolKind = "class"
+	KindInterface SymbolKind = "interface"
+	KindNamespace SymbolKind = "namespace"
+	KindEnum      SymbolKind = "enum"
+	KindFunction  SymbolKind = "function"
+	KindType      SymbolKind = "type"
+	KindVariable  SymbolKind = "variable"
+	KindProperty  SymbolKind = "property"
+	KindMethod    SymbolKind = "method"
 )
 
 // ExportedSymbol represents a single exported TypeScript symbol.

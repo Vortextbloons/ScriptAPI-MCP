@@ -22,7 +22,6 @@ type RuleCheck func(raw map[string]any, parsed *models.Manifest, opts *DoctorOpt
 
 func AllRuleChecks() []RuleCheck {
 	return []RuleCheck{
-		checkInvalidJSON,
 		checkMissingFormatVersion,
 		checkFormatVersionNot2,
 		checkMissingHeader,
@@ -87,10 +86,6 @@ func collectUUIDs(raw map[string]any) []string {
 		}
 	}
 	return uuids
-}
-
-func checkInvalidJSON(raw map[string]any, parsed *models.Manifest, opts *DoctorOptions) []Finding {
-	return nil
 }
 
 func checkMissingFormatVersion(raw map[string]any, parsed *models.Manifest, opts *DoctorOptions) []Finding {

@@ -78,37 +78,6 @@ func (c *Client) FetchVersionMatrix(module string) (*VersionMatrix, error) {
 	return vm, nil
 }
 
-// FetchVersionData fetches metadata for a specific module version from npm
-func (c *Client) FetchVersionData(module, version string) (map[string]any, error) {
-	cacheKey := "metadata:" + module + "@" + version
-	if data, ok := c.cache.Get(cacheKey); ok {
-		var result map[string]any
-		if err := json.Unmarshal(data, &result); err == nil {
-			return result, nil
-		}
-	}
-
-	url := fmt.Sprintf("%s/%s/%s", registryURL, module, version)
-	resp, err := c.httpClient.Get(url)
-	if err != nil {
-		return nil, fmt.Errorf("failed to fetch version data: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("npm registry returned status %d", resp.StatusCode)
-	}
-
-	var result map[string]any
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, fmt.Errorf("failed to decode version data: %w", err)
-	}
-
-	data, _ := json.Marshal(result)
-	c.cache.Set(cacheKey, data, dtsTTL)
-	return result, nil
-}
-
 // FetchTypes fetches the .d.ts file for a specific module version
 func (c *Client) FetchTypes(module, version string) ([]byte, error) {
 	cacheKey := fmt.Sprintf("dts:%s@%s", module, version)
@@ -154,16 +123,6 @@ func (c *Client) FetchTypes(module, version string) ([]byte, error) {
 	return dts, nil
 }
 
-// ClearCache clears all cached data to force fresh fetches
-func (c *Client) ClearCache() {
-	c.cache.Clear()
-}
-
-// ClearVersionCache clears cached version data for a specific module
-func (c *Client) ClearVersionCache(module string) {
-	c.cache.Delete("versions:" + module)
-}
-
 func extractDTS(r io.Reader) ([]byte, error) {
 	gz, err := gzip.NewReader(r)
 	if err != nil {
@@ -187,7 +146,7 @@ func extractDTS(r io.Reader) ([]byte, error) {
 	return nil, fmt.Errorf("index.d.ts not found in tarball")
 }
 
-// VersionMatrix is re-exported for convenience
+// VersionMatrix holds parsed npm version data for a module
 type VersionMatrix struct {
 	Module   string            `json:"module"`
 	Versions []string          `json:"versions"`

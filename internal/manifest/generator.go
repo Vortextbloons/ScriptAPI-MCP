@@ -185,17 +185,6 @@ func GeneratePackageJSON(addonName string, deps []models.Dependency, lang string
 	return string(b) + "\n"
 }
 
-// BuildDependencies creates the dependency list for a BP manifest
-func BuildDependencies(serverVersion string, needsUI bool) []models.Dependency {
-	deps := []models.Dependency{
-		{ModuleName: "@minecraft/server", Version: serverVersion},
-	}
-	if needsUI {
-		deps = append(deps, models.Dependency{ModuleName: "@minecraft/server-ui", Version: serverVersion})
-	}
-	return deps
-}
-
 // BuildDependenciesWithChannel creates the dependency list for a BP manifest by resolving versions from actual npm data.
 // modules is a list of module names (e.g., ["@minecraft/server", "@minecraft/server-ui"])
 // minecraftVersion is the Minecraft version (e.g., "1.21.60" or "latest")
@@ -238,28 +227,6 @@ func BuildDependenciesWithChannel(npmClient *npm.Client, modules []string, minec
 	}
 
 	return deps, nil
-}
-
-// BuildDependenciesWithValidation resolves versions and validates against installed node_modules
-func BuildDependenciesWithValidation(projectPath string, npmClient *npm.Client, modules []string, minecraftVersion string, channel string) ([]models.Dependency, []string, error) {
-	deps, err := BuildDependenciesWithChannel(npmClient, modules, minecraftVersion, channel)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	// Build version map for validation
-	manifestVersions := make(map[string]string)
-	for _, dep := range deps {
-		manifestVersions[dep.ModuleName] = dep.Version
-	}
-
-	// Validate against installed modules
-	warnings, err := npm.ValidateInstalledModules(projectPath, manifestVersions)
-	if err != nil {
-		return deps, warnings, err
-	}
-
-	return deps, warnings, nil
 }
 
 // UpdateDependencies modifies a manifest's dependency list

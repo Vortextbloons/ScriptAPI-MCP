@@ -76,33 +76,6 @@ func TestGenerateRP(t *testing.T) {
 	}
 }
 
-// TestBuildDependencies tests basic dependency building
-func TestBuildDependencies(t *testing.T) {
-	deps := BuildDependencies("2.7.0-beta", true)
-
-	if len(deps) != 2 {
-		t.Errorf("dependencies count = %d, want 2", len(deps))
-	}
-	if deps[0].ModuleName != "@minecraft/server" {
-		t.Errorf("first dep = %q, want @minecraft/server", deps[0].ModuleName)
-	}
-	if deps[1].ModuleName != "@minecraft/server-ui" {
-		t.Errorf("second dep = %q, want @minecraft/server-ui", deps[1].ModuleName)
-	}
-}
-
-// TestBuildDependenciesNoUI tests dependency building without UI
-func TestBuildDependenciesNoUI(t *testing.T) {
-	deps := BuildDependencies("1.0.0", false)
-
-	if len(deps) != 1 {
-		t.Errorf("dependencies count = %d, want 1", len(deps))
-	}
-	if deps[0].ModuleName != "@minecraft/server" {
-		t.Errorf("first dep = %q, want @minecraft/server", deps[0].ModuleName)
-	}
-}
-
 // TestUpdateDependencies tests adding and removing dependencies
 func TestUpdateDependencies(t *testing.T) {
 	manifest := &models.Manifest{
@@ -414,25 +387,6 @@ func containsInternal(s, substr string) bool {
 		}
 	}
 	return false
-}
-
-// TestBuildDependenciesWithValidation tests validation against node_modules
-func TestBuildDependenciesWithValidation(t *testing.T) {
-	client := npm.NewClient()
-
-	// This will likely return warnings since node_modules probably doesn't exist in test env
-	deps, warnings, err := BuildDependenciesWithValidation(".", client, []string{"@minecraft/server"}, "latest", "beta")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	if len(deps) != 1 {
-		t.Errorf("dependencies count = %d, want 1", len(deps))
-	}
-	// Should have warnings since node_modules/@minecraft/server likely doesn't exist
-	if len(warnings) == 0 {
-		t.Log("No warnings - node_modules might exist or validation skipped")
-	}
 }
 
 // TestUpdateDependenciesDeprecatedModule tests deprecated module rejection

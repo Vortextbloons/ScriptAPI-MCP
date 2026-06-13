@@ -27,3 +27,5 @@ stdout.txt
 *.swp
 *.swo
 *~
+.cursor/
+opencode.json

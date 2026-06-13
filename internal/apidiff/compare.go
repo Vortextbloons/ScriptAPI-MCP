@@ -13,7 +13,6 @@ const (
 	Removed           ChangeKind = "removed"
 	Added             ChangeKind = "added"
 	SignatureChanged  ChangeKind = "signature_changed"
-	TypeChanged       ChangeKind = "type_changed"
 	DeprecatedAdded   ChangeKind = "deprecated_added"
 	DeprecatedRemoved ChangeKind = "deprecated_removed"
 )

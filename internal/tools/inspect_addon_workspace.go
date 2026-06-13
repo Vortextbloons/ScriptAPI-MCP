@@ -9,10 +9,6 @@ import (
 	"github.com/isaac-org/Script-API-Helper-MCP/internal/manifest"
 )
 
-type InspectAddonWorkspaceInput struct {
-	ProjectPath string `json:"project_path" mcp:"required,description='Path to addon workspace root'"`
-}
-
 type InspectAddonWorkspaceOutput struct {
 	ProjectPath      string   `json:"project_path"`
 	HasBehaviorPack  bool     `json:"has_behavior_pack"`

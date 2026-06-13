@@ -6,21 +6,6 @@ import (
 	"strings"
 )
 
-// VersionMatrix holds parsed npm version data for a module
-type VersionMatrix struct {
-	Module   string            `json:"module"`
-	Versions []string          `json:"versions"`
-	Tags     map[string]string `json:"tags"`
-}
-
-// ResolvedVersion is the output of version resolution
-type ResolvedVersion struct {
-	MinecraftVersion string   `json:"minecraft_version"`
-	NPMVersion       string   `json:"npm_version"`
-	AvailableModules []string `json:"available_modules"`
-	Guardrails       []string `json:"guardrails"`
-}
-
 // Manifest represents the structure of a Bedrock manifest.json
 type Manifest struct {
 	FormatVersion int              `json:"format_version"`
@@ -93,14 +78,6 @@ func (d *Dependency) UnmarshalJSON(data []byte) error {
 	return json.Unmarshal(tmp.Version, &d.Version)
 }
 
-// AddonWorkspace is the output of init_addon_workspace
-type AddonWorkspace struct {
-	BehaviorPackManifest string            `json:"behavior_pack_manifest"`
-	ResourcePackManifest string            `json:"resource_pack_manifest,omitempty"`
-	FileStructure        []string          `json:"file_structure"`
-	StarterCode          map[string]string `json:"starter_code"`
-}
-
 // AllowedModules is the whitelist for manifest sync-deps mode
 var AllowedModules = []string{
 	"@minecraft/server",
@@ -116,12 +93,4 @@ var DeprecatedModules = []string{
 	"mojang-minecraft-ui",
 	"mojang-minecraft-server-admin",
 	"mojang-gametest",
-}
-
-// VersionResolutionResult holds the outcome of attempting to resolve a version string.
-type VersionResolutionResult struct {
-	Requested  string   `json:"requested"`
-	Resolved   string   `json:"resolved"`
-	Candidates []string `json:"candidates,omitempty"`
-	Error      string   `json:"error,omitempty"`
 }
