@@ -155,14 +155,21 @@ func GeneratePackageJSON(addonName string, deps []models.Dependency, lang string
 	devDeps := make(map[string]string)
 
 	if lang == "typescript" {
-		externalStr := strings.Join(externalFlags, " ")
-		scripts["build"] = fmt.Sprintf("esbuild src/main.ts --bundle --format=esm --target=es2020 --outfile=behavior_pack/scripts/main.js %s", externalStr)
+		// Invoke esbuild through its JS API. The CLI path is fragile when the
+		// project lives under a Windows directory containing '&' (npm treats it
+		// as a command separator).
+		externals := make([]string, 0, len(externalFlags))
+		for _, flag := range externalFlags {
+			externals = append(externals, strings.TrimPrefix(flag, "--external:"))
+		}
+		externalJSON, _ := json.Marshal(externals)
+		scripts["build"] = fmt.Sprintf("node -e \"require('esbuild').buildSync({entryPoints:['src/main.ts'],bundle:true,format:'esm',target:'es2020',outfile:'behavior_pack/scripts/main.js',external:%s})\"", string(externalJSON))
 		scripts["typecheck"] = "tsc --noEmit"
-		devDeps["esbuild"] = "^0.25.9"
-		devDeps["typescript"] = "^5.9.2"
+		devDeps["esbuild"] = "^0.28.1"
+		devDeps["typescript"] = "7.0.2"
 	} else {
 		scripts["build"] = "node scripts/deploy.js compile"
-		devDeps["esbuild"] = "^0.25.9"
+		devDeps["esbuild"] = "^0.28.1"
 	}
 	scripts["bundle"] = "node scripts/bundle.js"
 	scripts["deploy:dev"] = "node scripts/deploy.js dev"

@@ -32,8 +32,8 @@ type ScaffoldAddonInput struct {
 	RPFolderName                   string   `json:"rp_folder_name" mcp:"description='Source resource pack folder name in project (default: resource_pack)'"`
 	BPDestName                     string   `json:"bp_dest_name" mcp:"description='Destination folder name in development_behavior_packs (e.g., MyAddon or MyAddon BP)'"`
 	RPDestName                     string   `json:"rp_dest_name" mcp:"description='Destination folder name in development_resource_packs (e.g., MyAddon RP or MyAddon Resources)'"`
-	CreateInCurrentDir             bool     `json:"create_in_current_dir" mcp:"description='If true, creates addon in current directory instead of subfolder'"`
-	ProjectPath                    string   `json:"project_path" mcp:"description='Project folder used for local node_modules validation'"`
+	CreateInCurrentDir             bool     `json:"create_in_current_dir" mcp:"description='Create files directly in project_path. This is implied when project_path is supplied; use an empty project_path to create a new addon-name folder in the current directory.'"`
+	ProjectPath                    string   `json:"project_path" mcp:"description='Existing project folder to scaffold into and use for local node_modules validation. Files are written at this folder's root.'"`
 	DryRun                         bool     `json:"dry_run" mcp:"description='If true, previews files and does not write to disk'"`
 	OverwriteExisting              bool     `json:"overwrite_existing" mcp:"description='If true, allows overwriting existing files when write_files=true'"`
 }
@@ -61,7 +61,7 @@ type VersionLookupStep struct {
 
 func RegisterScaffoldAddon(server *mcp.Server, npmClient *npm.Client) error {
 	return server.RegisterTool("scaffold_addon",
-		"Scaffolds a new Minecraft Bedrock addon with behavior pack, resource pack, and optional deploy script. First ask for the target Minecraft game version (e.g., 1.21.70, 1.26.13). Then ask what dependency channel to use (stable, beta, or preview) as this determines the correct dependency versions. Also ask the user to inspect npm versions with `npm view <module> versions --json` for each selected dependency before choosing the matching channel version. Set write_files=true to write the scaffold to disk. When create_deploy_script is true, also ask for the exact Minecraft com.mojang path plus BP/RP source and destination folder names.",
+		"Scaffolds a new Minecraft Bedrock addon with behavior pack, resource pack, and optional deploy script. First ask for the target Minecraft game version (e.g., 1.21.70, 1.26.13). Then ask what dependency channel to use (stable, beta, or preview) as this determines the correct dependency versions. Also ask the user to inspect npm versions with `npm view <module> versions --json` for each selected dependency before choosing the matching channel version. Set write_files=true to write the scaffold to disk. When project_path is supplied, write files directly into that directory (do not add a second addon-name directory). When create_deploy_script is true, also ask for the exact Minecraft com.mojang path plus BP/RP source and destination folder names.",
 		func(args ScaffoldAddonInput) (*mcp.ToolResponse, error) {
 			return handleScaffoldAddon(args, npmClient)
 		})
@@ -160,7 +160,7 @@ func handleScaffoldAddon(args ScaffoldAddonInput, npmClient *npm.Client) (*mcp.T
 			return toolErrorResponse("OUTPUT_PATH_INVALID", fmt.Sprintf("error resolving output path: %v", err), false), nil
 		}
 
-		files := buildScaffoldFiles(output, args.CreateDeployScript)
+		files := buildScaffoldFiles(output, args)
 		if args.DryRun {
 			output.OutputPath = rootPath
 			output.WouldWriteFiles = sortedPaths(files)
@@ -190,14 +190,17 @@ func resolveScaffoldRoot(projectPath, addonName string, createInCurrentDir bool)
 		basePath = cwd
 	}
 
-	if createInCurrentDir {
+	// A supplied project path already identifies the intended addon root. Appending
+	// addonName here produced accidental Project/Project nesting for callers.
+	if createInCurrentDir || strings.TrimSpace(projectPath) != "" {
 		return basePath, nil
 	}
 
 	return filepath.Join(basePath, addonName), nil
 }
 
-func buildScaffoldFiles(output ScaffoldAddonOutput, includeDeploy bool) map[string]string {
+func buildScaffoldFiles(output ScaffoldAddonOutput, args ScaffoldAddonInput) map[string]string {
+	includeDeploy := args.CreateDeployScript
 	files := map[string]string{
 		filepath.Join("behavior_pack", "manifest.json"): output.BehaviorPackManifest,
 	}
@@ -211,6 +214,8 @@ func buildScaffoldFiles(output ScaffoldAddonOutput, includeDeploy bool) map[stri
 	}
 
 	if includeDeploy {
+		files[".env"] = generateEnvFile(args.MCDevPath)
+		files[filepath.Join("behavior_pack", "scripts", ".gitkeep")] = ""
 		if output.PackageJSON != "" {
 			files["package.json"] = output.PackageJSON
 		}
@@ -223,6 +228,10 @@ func buildScaffoldFiles(output ScaffoldAddonOutput, includeDeploy bool) map[stri
 	}
 
 	return files
+}
+
+func generateEnvFile(mcDevPath string) string {
+	return "# Minecraft Bedrock development folder\nDEPLOY_PATH=" + strings.TrimSpace(mcDevPath) + "\n\n# Optional folder for npm run deploy:prod output\n# DOWNLOAD_PATH=\n"
 }
 
 func sortedPaths(files map[string]string) []string {
