@@ -97,3 +97,30 @@ func ModuleGuide() string {
 - Run manifest_doctor after dependency edits.
 `
 }
+
+func BestPractices() string {
+	return `# Bedrock Script API Best Practices
+
+- Do not perform expensive work every tick; use events, intervals, and dirty flags.
+- Cache derived values and invalidate them only when their source data changes.
+- Validate entity and player references before use, especially after delayed callbacks.
+- Prefer Map and Set over repeated array scans in hot paths.
+- Keep system.runInterval usage centralized and catch task errors so one failure does not break other work.
+- Keep manifest dependencies, installed modules, and target Minecraft version aligned.
+`
+}
+
+func ColorCodes() string {
+	return `# Minecraft Color and Format Codes
+
+| Code | Meaning |
+|---|---|
+| §0–§9 | Black through Blue |
+| §a–§f | Green, Aqua, Red, Light Purple, Yellow, White |
+| §g | Minecoin Gold |
+| §k | Obfuscated |
+| §l | Bold |
+| §o | Italic |
+| §r | Reset |
+`
+}

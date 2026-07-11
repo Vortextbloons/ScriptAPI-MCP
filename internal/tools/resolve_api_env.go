@@ -28,6 +28,7 @@ type ResolveAPIEnvOutput struct {
 	AvailableModules []string `json:"available_modules"`
 	Guardrails       []string `json:"guardrails"`
 	ProjectAdvice    string   `json:"project_advice"`
+	DataSource       string   `json:"data_source"`
 }
 
 func RegisterResolveAPIEnvironment(server *mcp.Server, npmClient *npm.Client) error {
@@ -86,7 +87,7 @@ func handleListAPIVersions(args ResolveAPIEnvInput, npmClient *npm.Client) (*mcp
 		out = out[:limit]
 	}
 
-	b, _ := json.MarshalIndent(map[string]any{"module": module, "channel": ch, "versions": out}, "", "  ")
+	b, _ := json.MarshalIndent(map[string]any{"module": module, "channel": ch, "versions": out, "data_source": npmClient.LastFetchSource()}, "", "  ")
 	return mcp.NewToolResponse(mcp.NewTextContent(string(b))), nil
 }
 
@@ -144,6 +145,7 @@ func handleResolveAPIEnv(args ResolveAPIEnvInput, npmClient *npm.Client) (*mcp.T
 		AvailableModules: availableModules,
 		Guardrails:       guardrails,
 		ProjectAdvice:    advice,
+		DataSource:       npmClient.LastFetchSource(),
 	}
 
 	jsonOut, _ := json.MarshalIndent(output, "", "  ")

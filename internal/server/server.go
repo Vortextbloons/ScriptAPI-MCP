@@ -51,14 +51,14 @@ func NewWithTransport(tr transport.Transport) (*mcp.Server, error) {
 	if err := tools.RegisterDiffScriptAPIVersions(server, npmClient); err != nil {
 		return nil, fmt.Errorf("failed to register diff_script_api_versions: %w", err)
 	}
-	if err := tools.RegisterDiagnoseWorkspace(server); err != nil {
-		return nil, fmt.Errorf("failed to register diagnose_workspace: %w", err)
+	if err := tools.RegisterCheckAddon(server); err != nil {
+		return nil, fmt.Errorf("failed to register check_addon: %w", err)
+	}
+	if err := tools.RegisterValidateScriptAPIUsage(server); err != nil {
+		return nil, fmt.Errorf("failed to register validate_script_api_usage: %w", err)
 	}
 	if err := tools.RegisterDistributeAddon(server); err != nil {
 		return nil, fmt.Errorf("failed to register distribute_addon: %w", err)
-	}
-	if err := tools.RegisterBedrockReference(server); err != nil {
-		return nil, fmt.Errorf("failed to register bedrock_reference: %w", err)
 	}
 
 	if err := server.RegisterResource("bedrock://docs/strict_rules",
@@ -83,6 +83,17 @@ func NewWithTransport(tr transport.Transport) (*mcp.Server, error) {
 			), nil
 		}); err != nil {
 		return nil, fmt.Errorf("failed to register module_guide resource: %w", err)
+	}
+
+	if err := server.RegisterResource("bedrock://docs/best_practices", "Bedrock Script API Best Practices", "Performance and architecture guidance", "text/markdown", func() (*mcp.ResourceResponse, error) {
+		return mcp.NewResourceResponse(mcp.NewTextEmbeddedResource("bedrock://docs/best_practices", resources.BestPractices(), "text/markdown")), nil
+	}); err != nil {
+		return nil, fmt.Errorf("failed to register best_practices resource: %w", err)
+	}
+	if err := server.RegisterResource("bedrock://docs/color_codes", "Minecraft Color Codes", "Minecraft formatting and color codes", "text/markdown", func() (*mcp.ResourceResponse, error) {
+		return mcp.NewResourceResponse(mcp.NewTextEmbeddedResource("bedrock://docs/color_codes", resources.ColorCodes(), "text/markdown")), nil
+	}); err != nil {
+		return nil, fmt.Errorf("failed to register color_codes resource: %w", err)
 	}
 
 	return server, nil

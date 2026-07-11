@@ -1,4 +1,4 @@
-﻿package tools
+package tools
 
 import (
 	"encoding/json"
@@ -61,7 +61,7 @@ type VersionLookupStep struct {
 
 func RegisterScaffoldAddon(server *mcp.Server, npmClient *npm.Client) error {
 	return server.RegisterTool("scaffold_addon",
-		"Scaffolds a new Minecraft Bedrock addon with behavior pack, resource pack, and optional deploy script. First ask for the target Minecraft game version (e.g., 1.21.70, 1.26.13). Then ask what dependency channel to use (stable, beta, or preview) as this determines the correct dependency versions. Also ask the user to inspect npm versions with `npm view <module> versions --json` for each selected dependency before choosing the matching channel version. Set write_files=true to write the scaffold to disk. When project_path is supplied, write files directly into that directory (do not add a second addon-name directory). When create_deploy_script is true, also ask for the exact Minecraft com.mojang path plus BP/RP source and destination folder names.",
+		"Scaffolds a new Minecraft Bedrock addon with behavior pack, resource pack, and optional deploy script. Resolves selected module versions from npm for the requested game version and channel. Set write_files=true to write the scaffold to disk. When project_path is supplied, files are written directly into that directory.",
 		func(args ScaffoldAddonInput) (*mcp.ToolResponse, error) {
 			return handleScaffoldAddon(args, npmClient)
 		})
@@ -541,4 +541,3 @@ else {
 `
 	return script
 }
-

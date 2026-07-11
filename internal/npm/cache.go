@@ -1,6 +1,11 @@
 package npm
 
 import (
+	"crypto/sha256"
+	"encoding/json"
+	"fmt"
+	"os"
+	"path/filepath"
 	"sync"
 	"time"
 )
@@ -15,6 +20,58 @@ type CacheEntry struct {
 type Cache struct {
 	mu    sync.RWMutex
 	store map[string]CacheEntry
+}
+
+// diskCache stores successful npm responses across MCP restarts. Expiry is
+// deliberately checked by the caller; stale values remain available as an
+// offline fallback when the registry cannot be reached.
+type diskCache struct{ dir string }
+type diskEntry struct {
+	Data    []byte    `json:"data"`
+	SavedAt time.Time `json:"saved_at"`
+}
+
+func newDiskCache() *diskCache {
+	dir, err := os.UserCacheDir()
+	if err != nil {
+		return nil
+	}
+	dir = filepath.Join(dir, "script-api-helper-mcp", "npm")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return nil
+	}
+	return &diskCache{dir: dir}
+}
+
+func (d *diskCache) path(key string) string {
+	sum := sha256.Sum256([]byte(key))
+	return filepath.Join(d.dir, fmt.Sprintf("%x.json", sum))
+}
+
+func (d *diskCache) Get(key string) ([]byte, time.Time, bool) {
+	if d == nil {
+		return nil, time.Time{}, false
+	}
+	b, err := os.ReadFile(d.path(key))
+	if err != nil {
+		return nil, time.Time{}, false
+	}
+	var entry diskEntry
+	if json.Unmarshal(b, &entry) != nil || entry.SavedAt.IsZero() {
+		return nil, time.Time{}, false
+	}
+	return entry.Data, entry.SavedAt, true
+}
+
+func (d *diskCache) Set(key string, data []byte) {
+	if d == nil {
+		return
+	}
+	b, err := json.Marshal(diskEntry{Data: data, SavedAt: time.Now().UTC()})
+	if err != nil {
+		return
+	}
+	_ = os.WriteFile(d.path(key), b, 0o600)
 }
 
 // NewCache creates a new Cache instance

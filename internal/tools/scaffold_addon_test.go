@@ -21,7 +21,7 @@ func TestBuildScaffoldFiles(t *testing.T) {
 		DeployScript: "deploy-js",
 	}
 
-	files := buildScaffoldFiles(output, true)
+	files := buildScaffoldFiles(output, ScaffoldAddonInput{CreateDeployScript: true})
 
 	if files[filepath.Join("behavior_pack", "manifest.json")] != "bp-manifest" {
 		t.Fatalf("behavior pack manifest not included")

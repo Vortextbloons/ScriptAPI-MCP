@@ -1,6 +1,7 @@
 package manifest
 
 import (
+	"os"
 	"reflect"
 	"testing"
 
@@ -294,6 +295,9 @@ func TestGenerateStarterCodeTypeScript(t *testing.T) {
 
 // TestBuildDependenciesWithChannel tests version resolution with channel
 func TestBuildDependenciesWithChannel(t *testing.T) {
+	if os.Getenv("SCRIPT_API_NETWORK_TESTS") != "1" {
+		t.Skip("requires live npm registry; set SCRIPT_API_NETWORK_TESTS=1 to run")
+	}
 	// Create a mock client
 	client := npm.NewClient()
 
@@ -316,6 +320,9 @@ func TestBuildDependenciesWithChannel(t *testing.T) {
 
 // TestBuildDependenciesWithChannelDefaultModules tests default module handling
 func TestBuildDependenciesWithChannelDefaultModules(t *testing.T) {
+	if os.Getenv("SCRIPT_API_NETWORK_TESTS") != "1" {
+		t.Skip("requires live npm registry; set SCRIPT_API_NETWORK_TESTS=1 to run")
+	}
 	client := npm.NewClient()
 
 	deps, err := BuildDependenciesWithChannel(client, []string{}, "latest", "beta")
@@ -333,6 +340,9 @@ func TestBuildDependenciesWithChannelDefaultModules(t *testing.T) {
 
 // TestBuildDependenciesWithChannelStable tests stable channel
 func TestBuildDependenciesWithChannelStable(t *testing.T) {
+	if os.Getenv("SCRIPT_API_NETWORK_TESTS") != "1" {
+		t.Skip("requires live npm registry; set SCRIPT_API_NETWORK_TESTS=1 to run")
+	}
 	client := npm.NewClient()
 
 	deps, err := BuildDependenciesWithChannel(client, []string{"@minecraft/server"}, "latest", "stable")
@@ -351,6 +361,9 @@ func TestBuildDependenciesWithChannelStable(t *testing.T) {
 
 // TestBuildDependenciesWithChannelMultipleModules tests multiple module resolution
 func TestBuildDependenciesWithChannelMultipleModules(t *testing.T) {
+	if os.Getenv("SCRIPT_API_NETWORK_TESTS") != "1" {
+		t.Skip("requires live npm registry; set SCRIPT_API_NETWORK_TESTS=1 to run")
+	}
 	client := npm.NewClient()
 
 	deps, err := BuildDependenciesWithChannel(client, []string{

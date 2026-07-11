@@ -16,6 +16,9 @@ import (
 )
 
 func TestToolCalls(t *testing.T) {
+	if os.Getenv("SCRIPT_API_NETWORK_TESTS") != "1" {
+		t.Skip("requires live npm registry; set SCRIPT_API_NETWORK_TESTS=1 to run")
+	}
 	inReader, inWriter, err := os.Pipe()
 	if err != nil {
 		t.Fatalf("failed to create input pipe: %v", err)

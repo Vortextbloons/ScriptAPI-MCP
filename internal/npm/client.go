@@ -22,7 +22,12 @@ const (
 type Client struct {
 	httpClient *http.Client
 	cache      *Cache
+	diskCache  *diskCache
+	lastSource string
 }
+
+// LastFetchSource reports whether the last registry request used npm or cache.
+func (c *Client) LastFetchSource() string { return c.lastSource }
 
 // NewClient creates a new npm Client
 func NewClient() *Client {
@@ -30,7 +35,8 @@ func NewClient() *Client {
 		httpClient: &http.Client{
 			Timeout: 15 * time.Second,
 		},
-		cache: NewCache(),
+		cache:     NewCache(),
+		diskCache: newDiskCache(),
 	}
 }
 
@@ -40,6 +46,15 @@ func (c *Client) FetchVersionMatrix(module string) (*VersionMatrix, error) {
 	if data, ok := c.cache.Get(cacheKey); ok {
 		var vm VersionMatrix
 		if err := json.Unmarshal(data, &vm); err == nil {
+			c.lastSource = "memory cache"
+			return &vm, nil
+		}
+	}
+	if data, savedAt, ok := c.diskCache.Get(cacheKey); ok && time.Since(savedAt) <= versionTTL {
+		var vm VersionMatrix
+		if json.Unmarshal(data, &vm) == nil {
+			c.cache.Set(cacheKey, data, versionTTL)
+			c.lastSource = "disk cache saved " + savedAt.UTC().Format(time.RFC3339)
 			return &vm, nil
 		}
 	}
@@ -47,6 +62,13 @@ func (c *Client) FetchVersionMatrix(module string) (*VersionMatrix, error) {
 	url := fmt.Sprintf("%s/%s", registryURL, module)
 	resp, err := c.httpClient.Get(url)
 	if err != nil {
+		if data, savedAt, ok := c.diskCache.Get(cacheKey); ok {
+			var vm VersionMatrix
+			if json.Unmarshal(data, &vm) == nil {
+				c.lastSource = "offline fallback from disk cache saved " + savedAt.UTC().Format(time.RFC3339)
+				return &vm, nil
+			}
+		}
 		return nil, fmt.Errorf("failed to fetch version matrix: %w", err)
 	}
 	defer resp.Body.Close()
@@ -75,6 +97,8 @@ func (c *Client) FetchVersionMatrix(module string) (*VersionMatrix, error) {
 
 	data, _ := json.Marshal(vm)
 	c.cache.Set(cacheKey, data, versionTTL)
+	c.diskCache.Set(cacheKey, data)
+	c.lastSource = "npm registry"
 	return vm, nil
 }
 
@@ -82,6 +106,12 @@ func (c *Client) FetchVersionMatrix(module string) (*VersionMatrix, error) {
 func (c *Client) FetchTypes(module, version string) ([]byte, error) {
 	cacheKey := fmt.Sprintf("dts:%s@%s", module, version)
 	if data, ok := c.cache.Get(cacheKey); ok {
+		c.lastSource = "memory cache"
+		return data, nil
+	}
+	if data, savedAt, ok := c.diskCache.Get(cacheKey); ok && time.Since(savedAt) <= dtsTTL {
+		c.cache.Set(cacheKey, data, dtsTTL)
+		c.lastSource = "disk cache saved " + savedAt.UTC().Format(time.RFC3339)
 		return data, nil
 	}
 
@@ -89,6 +119,10 @@ func (c *Client) FetchTypes(module, version string) ([]byte, error) {
 	url := fmt.Sprintf("%s/%s/%s", registryURL, module, version)
 	resp, err := c.httpClient.Get(url)
 	if err != nil {
+		if data, savedAt, ok := c.diskCache.Get(cacheKey); ok {
+			c.lastSource = "offline fallback from disk cache saved " + savedAt.UTC().Format(time.RFC3339)
+			return data, nil
+		}
 		return nil, fmt.Errorf("failed to fetch package metadata: %w", err)
 	}
 	defer resp.Body.Close()
@@ -109,6 +143,10 @@ func (c *Client) FetchTypes(module, version string) ([]byte, error) {
 	// Download tarball
 	resp, err = c.httpClient.Get(payload.Dist.Tarball)
 	if err != nil {
+		if data, savedAt, ok := c.diskCache.Get(cacheKey); ok {
+			c.lastSource = "offline fallback from disk cache saved " + savedAt.UTC().Format(time.RFC3339)
+			return data, nil
+		}
 		return nil, fmt.Errorf("failed to download tarball: %w", err)
 	}
 	defer resp.Body.Close()
@@ -120,6 +158,8 @@ func (c *Client) FetchTypes(module, version string) ([]byte, error) {
 	}
 
 	c.cache.Set(cacheKey, dts, dtsTTL)
+	c.diskCache.Set(cacheKey, dts)
+	c.lastSource = "npm registry"
 	return dts, nil
 }
 

@@ -1,7 +1,7 @@
 # Bedrock Script API Helper MCP
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.9.1-blue?style=flat-square" alt="Version 1.9.1">
+  <img src="https://img.shields.io/badge/version-2.0.0-blue?style=flat-square" alt="Version 2.0.0">
   <img src="https://img.shields.io/badge/go-1.26.2-00ADD8?style=flat-square&logo=go" alt="Go 1.26.2">
   <img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="MIT License">
   <img src="https://img.shields.io/badge/MCP-server-7B68EE?style=flat-square" alt="MCP Server">
@@ -22,12 +22,12 @@ All error responses are **structured JSON** with machine-readable codes, retryab
 | `search_api` | Queries TypeScript definitions from npm (`source=registry`) or local `node_modules` (`source=local`) |
 | `manifest` | Diagnoses, auto-fixes, or syncs dependencies on `manifest.json` (`mode=diagnose`, `fix`, `sync-deps`) |
 | `scaffold_addon` | Full project scaffolding with deploy scripts and file output |
-| `diagnose_workspace` | Validates workspace and diagnoses pack loading issues |
+| `check_addon` | Validates workspace and compiled output (`mode=check`), runs builds (`mode=build`), scores health, or troubleshoots loading issues |
+| `validate_script_api_usage` | Checks JS/TS imports against manifest dependencies and local Script API declarations |
 | `distribute_addon` | Packages `.mcaddon` archives and/or deploys to development folders |
 | `generate_code` | Lists or generates boilerplate patterns (`mode=list` or `generate`) |
 | `generate_uuid` | Generates v4 UUIDs with manifest slot presets |
 | `diff_script_api_versions` | Diffs the API surface between two module versions |
-| `bedrock_reference` | Static lookups: color codes (`topic=color-codes`) or best practices (`topic=best-practices`) |
 | `get_mcp_version` | Reports the MCP server name and version |
 
 ---
@@ -109,8 +109,8 @@ Full project scaffold — everything `init_addon_workspace` does, plus optional 
 
 **Safety features:** `dry_run` parameter previews files without writing. `overwrite_existing` controls whether existing files are replaced. Path traversal is blocked. Non-Windows deploy scripts include a portability warning.
 
-### `inspect_addon_workspace`
-Returns a structured inventory of an addon workspace:
+### Workspace checks
+`diagnose_workspace` returns a structured inventory of an addon workspace:
 
 ```json
 {
@@ -124,21 +124,7 @@ Returns a structured inventory of an addon workspace:
 }
 ```
 
-### `validate_addon_workspace`
-Validates the entire workspace against common rules:
-- Behavior pack manifest exists and is parseable
-- Script module entry point exists on disk
-- Source entry point exists (`src/main.js` or `src/main.ts`)
-- TypeScript projects have `tsconfig.json`
-- Resource pack manifest exists when expected
-
-Returns structured findings with severity, rule ID, and fixability flag.
-
-### `package_addon`
-Cross-platform addon packaging. Walks the `behavior_pack/` and `resource_pack/` directories and creates a `.mcaddon` zip archive. Supports `dry_run` to preview included files without writing. Works on any OS (no PowerShell dependency).
-
-### `deploy_addon`
-Deploys behavior/resource packs to Minecraft `development_behavior_packs` and `development_resource_packs` folders. Cleans destination folders before copying. Supports dry-run mode (`dry_run=true`).
+`check_addon` performs a read-only validation of workspace layout, TypeScript configuration, and the compiled script path declared in the manifest. `build_addon` explicitly runs `npm run build`, returns its diagnostics, and verifies the same output path. `validate_script_api_usage` scans JS/TS sources, checks `@minecraft/*` imports are declared in the behavior pack manifest, validates imported symbols against installed `node_modules` declarations, and flags deprecated symbols.
 
 ### `generate_uuid`
 Standalone UUID generator with three operating modes:
@@ -212,6 +198,8 @@ The server exposes these read-only resources:
 |-----|-------------|
 | `bedrock://docs/strict_rules` | Bedrock Script API guardrails and syntax cheat sheet |
 | `bedrock://docs/module_guide` | Module selection and version guidance for addon projects |
+| `bedrock://docs/best_practices` | Performance and architecture guidance |
+| `bedrock://docs/color_codes` | Minecraft color and format codes |
 
 ---
 
