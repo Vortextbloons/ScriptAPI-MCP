@@ -204,6 +204,12 @@ func resolveLatestPreview(vm *VersionMatrix) (string, error) {
 	return "", fmt.Errorf("no preview version found for module %s", vm.Module)
 }
 
+// CompareSemver compares two version strings. Returns 1 if a > b, -1 if a < b, 0 if equal.
+// Exported wrapper around compareSemver for use by tools packages.
+func CompareSemver(a, b string) int {
+	return compareSemver(a, b)
+}
+
 // compareSemver compares two version strings. Returns 1 if a > b, -1 if a < b, 0 if equal.
 func compareSemver(a, b string) int {
 	// Strip any pre-release suffixes for base comparison

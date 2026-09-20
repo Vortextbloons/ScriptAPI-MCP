@@ -82,7 +82,7 @@ func handleListAPIVersions(args ResolveAPIEnvInput, npmClient *npm.Client) (*mcp
 			out = append(out, v)
 		}
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i] > out[j] })
+	sort.Slice(out, func(i, j int) bool { return npm.CompareSemver(out[i], out[j]) > 0 })
 	if len(out) > limit {
 		out = out[:limit]
 	}
