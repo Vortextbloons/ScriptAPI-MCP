@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/isaac-org/Script-API-Helper-MCP/internal/mcdev"
 	mcp "github.com/metoro-io/mcp-golang"
 )
 
@@ -56,12 +57,16 @@ func RegisterDiagnoseWorkspace(server *mcp.Server) error {
 				return mcp.NewToolResponse(mcp.NewTextContent(string(b))), nil
 
 			case "troubleshoot":
+				deployCheck := "Ensure pack folders are deployed to com.mojang development directories"
+				if res, resErr := mcdev.Resolve(""); resErr == nil {
+					deployCheck = "Ensure pack folders are deployed to " + res.DevBP + " and " + res.DevRP + " (source: " + res.Source + ")"
+				}
 				checks := []string{
 					"Ensure manifests are valid JSON",
 					"Ensure UUIDs are unique",
 					"Ensure script entry file exists",
 					"Ensure module versions are compatible",
-					"Ensure pack folders are deployed to com.mojang development directories",
+					deployCheck,
 				}
 				b, _ := json.MarshalIndent(map[string]any{"valid": val.Valid, "findings": val.Findings, "recommended_checks": checks}, "", "  ")
 				return mcp.NewToolResponse(mcp.NewTextContent(string(b))), nil

@@ -2,10 +2,12 @@ package server
 
 import (
 	"fmt"
+	"os"
 
 	mcp "github.com/metoro-io/mcp-golang"
 	"github.com/metoro-io/mcp-golang/transport"
 
+	"github.com/isaac-org/Script-API-Helper-MCP/internal/mcdev"
 	"github.com/isaac-org/Script-API-Helper-MCP/internal/npm"
 	"github.com/isaac-org/Script-API-Helper-MCP/internal/resources"
 	"github.com/isaac-org/Script-API-Helper-MCP/internal/tools"
@@ -60,6 +62,15 @@ func NewWithTransport(tr transport.Transport) (*mcp.Server, error) {
 	if err := tools.RegisterDistributeAddon(server); err != nil {
 		return nil, fmt.Errorf("failed to register distribute_addon: %w", err)
 	}
+	if err := tools.RegisterResolveMinecraftEnv(server); err != nil {
+		return nil, fmt.Errorf("failed to register resolve_minecraft_env: %w", err)
+	}
+
+	if res, err := mcdev.Resolve(""); err == nil {
+		fmt.Fprintf(os.Stderr, "Resolved Minecraft games root: %s (%s)\n", res.Path, res.Source)
+	} else {
+		fmt.Fprintf(os.Stderr, "Minecraft games root not detected: %v\n", err)
+	}
 
 	if err := server.RegisterResource("bedrock://docs/strict_rules",
 		"Bedrock Script API Strict Rules",
@@ -94,6 +105,11 @@ func NewWithTransport(tr transport.Transport) (*mcp.Server, error) {
 		return mcp.NewResourceResponse(mcp.NewTextEmbeddedResource("bedrock://docs/color_codes", resources.ColorCodes(), "text/markdown")), nil
 	}); err != nil {
 		return nil, fmt.Errorf("failed to register color_codes resource: %w", err)
+	}
+	if err := server.RegisterResource("bedrock://env/minecraft", "Minecraft Environment", "Resolved Minecraft games data folder and deploy targets for this machine", "text/markdown", func() (*mcp.ResourceResponse, error) {
+		return mcp.NewResourceResponse(mcp.NewTextEmbeddedResource("bedrock://env/minecraft", resources.MinecraftEnv(), "text/markdown")), nil
+	}); err != nil {
+		return nil, fmt.Errorf("failed to register minecraft env resource: %w", err)
 	}
 
 	return server, nil

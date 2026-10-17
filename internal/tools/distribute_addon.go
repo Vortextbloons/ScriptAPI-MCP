@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/isaac-org/Script-API-Helper-MCP/internal/manifest"
+	"github.com/isaac-org/Script-API-Helper-MCP/internal/mcdev"
 	"github.com/isaac-org/Script-API-Helper-MCP/internal/models"
 	mcp "github.com/metoro-io/mcp-golang"
 )
@@ -44,7 +45,7 @@ type DistributeAddonInput struct {
 	ProjectPath    string `json:"project_path" mcp:"required,description='Path to addon workspace root'"`
 	Action         string `json:"action" mcp:"description='Operation: package (create .mcaddon, default), deploy (copy to com.mojang), or both'"`
 	OutputPath     string `json:"output_path" mcp:"description='package/both mode: path for .mcaddon output file'"`
-	MCDevPath      string `json:"mcdev_path" mcp:"description='deploy/both mode: path to com.mojang folder'"`
+	MCDevPath      string `json:"mcdev_path" mcp:"description='deploy/both mode: path to com.mojang / games data folder. Optional: resolved from MINECRAFT_COM_MOJANG env or platform auto-detection when empty.'"`
 	BPDestName     string `json:"bp_dest_name" mcp:"description='deploy/both mode: destination behavior pack folder name (defaults to the BP source folder name)'"`
 	RPDestName     string `json:"rp_dest_name" mcp:"description='deploy/both mode: destination resource pack folder name (defaults to the RP source folder name)'"`
 	BPPackName     string `json:"bp_pack_name" mcp:"description='package/both mode: top-level folder name written into the .mcaddon for the BP. Defaults to the BP manifest header.name (with manifest_suffix applied).'"`
@@ -161,13 +162,19 @@ func handleDistributeAddon(args DistributeAddonInput) (*mcp.ToolResponse, error)
 
 	switch action {
 	case "deploy":
-		mcdev := strings.TrimSpace(args.MCDevPath)
-		if mcdev == "" {
-			return toolErrorResponse("INVALID_INPUT", "mcdev_path is required for deploy mode", false), nil
+		mcdevPath := strings.TrimSpace(args.MCDevPath)
+		if mcdevPath == "" {
+			res, resErr := mcdev.Resolve("")
+			if resErr != nil {
+				return toolErrorResponse("MCDEV_NOT_FOUND", resErr.Error(), false), nil
+			}
+			mcdevPath = res.Path
+			results["mcdev_source"] = res.Source
+			results["mcdev_path"] = res.Path
 		}
 		deployArgs := DeployAddonInput{
 			ProjectPath:   effectivePath,
-			MCDevPath:     mcdev,
+			MCDevPath:     mcdevPath,
 			BPSource:      layout.BPSource,
 			RPSource:      layout.RPSource,
 			ScriptsSource: layout.ScriptsSource,
@@ -190,9 +197,15 @@ func handleDistributeAddon(args DistributeAddonInput) (*mcp.ToolResponse, error)
 		if devPackSet {
 			outputPath = applyDevSuffixToOutputPath(outputPath, devPack)
 		}
-		mcdev := strings.TrimSpace(args.MCDevPath)
-		if mcdev == "" {
-			return toolErrorResponse("INVALID_INPUT", "mcdev_path is required for deploy mode", false), nil
+		mcdevPath := strings.TrimSpace(args.MCDevPath)
+		if mcdevPath == "" {
+			res, resErr := mcdev.Resolve("")
+			if resErr != nil {
+				return toolErrorResponse("MCDEV_NOT_FOUND", resErr.Error(), false), nil
+			}
+			mcdevPath = res.Path
+			results["mcdev_source"] = res.Source
+			results["mcdev_path"] = res.Path
 		}
 
 		pkgArgs := PackageAddonInput{
@@ -213,7 +226,7 @@ func handleDistributeAddon(args DistributeAddonInput) (*mcp.ToolResponse, error)
 
 		deployArgs := DeployAddonInput{
 			ProjectPath:   effectivePath,
-			MCDevPath:     mcdev,
+			MCDevPath:     mcdevPath,
 			BPSource:      layout.BPSource,
 			RPSource:      layout.RPSource,
 			ScriptsSource: layout.ScriptsSource,

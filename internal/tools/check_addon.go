@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/isaac-org/Script-API-Helper-MCP/internal/mcdev"
 	mcp "github.com/metoro-io/mcp-golang"
 )
 
@@ -100,7 +101,13 @@ func handleCheckAddon(args CheckAddonInput) (*mcp.ToolResponse, error) {
 		return mcp.NewToolResponse(mcp.NewTextContent(string(b))), nil
 	}
 	if mode == "troubleshoot" {
-		out.Diagnostics = append(out.Diagnostics, BuildDiagnostic{Severity: "info", Message: "Check unique UUIDs, manifest JSON, module compatibility, script output, and deployment under com.mojang development packs."})
+		deployTarget := "com.mojang / games data folder (unresolved)"
+		if res, resErr := mcdev.Resolve(""); resErr == nil {
+			deployTarget = res.DevBP + " and " + res.DevRP + " (source: " + res.Source + ")"
+		} else {
+			deployTarget = "unresolved: " + resErr.Error()
+		}
+		out.Diagnostics = append(out.Diagnostics, BuildDiagnostic{Severity: "info", Message: "Check unique UUIDs, manifest JSON, module compatibility, script output, and deployment under " + deployTarget + "."})
 	}
 	b, _ := json.MarshalIndent(out, "", "  ")
 	return mcp.NewToolResponse(mcp.NewTextContent(string(b))), nil

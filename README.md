@@ -1,14 +1,14 @@
 # Bedrock Script API Helper MCP
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-2.0.0-blue?style=flat-square" alt="Version 2.0.0">
+  <img src="https://img.shields.io/badge/version-2.1.0-blue?style=flat-square" alt="Version 2.1.0">
   <img src="https://img.shields.io/badge/go-1.26.2-00ADD8?style=flat-square&logo=go" alt="Go 1.26.2">
   <img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="MIT License">
   <img src="https://img.shields.io/badge/MCP-server-7B68EE?style=flat-square" alt="MCP Server">
   <img src="https://img.shields.io/badge/Bedrock-Script%20API-FF6B35?style=flat-square" alt="Bedrock Script API">
 </p>
 
-An **MCP (Model Context Protocol) server** for Minecraft Bedrock Script API development. Provides **11 tools** that help AI assistants scaffold addons, validate manifests, search API types, detect breaking changes, generate UUIDs, package deployments, inspect workspaces, and produce boilerplate code — all backed by live npm registry data.
+An **MCP (Model Context Protocol) server** for Minecraft Bedrock Script API development. Provides **12 tools** that help AI assistants scaffold addons, validate manifests, search API types, detect breaking changes, generate UUIDs, package deployments, inspect workspaces, resolve the Minecraft install location, and produce boilerplate code — all backed by live npm registry data.
 
 All error responses are **structured JSON** with machine-readable codes, retryability flags, and actionable suggestions.
 
@@ -25,6 +25,7 @@ All error responses are **structured JSON** with machine-readable codes, retryab
 | `check_addon` | Validates workspace and compiled output (`mode=check`), runs builds (`mode=build`), scores health, or troubleshoots loading issues |
 | `validate_script_api_usage` | Checks JS/TS imports against manifest dependencies and local Script API declarations |
 | `distribute_addon` | Packages `.mcaddon` archives and/or deploys to development folders |
+| `resolve_minecraft_env` | Resolves the Minecraft games data folder (deploy target) via explicit path, env var, or platform auto-detection |
 | `generate_code` | Lists or generates boilerplate patterns (`mode=list` or `generate`) |
 | `generate_uuid` | Generates v4 UUIDs with manifest slot presets |
 | `diff_script_api_versions` | Diffs the API surface between two module versions |
@@ -108,6 +109,20 @@ Operates on a `manifest.json` string:
 Full project scaffold — everything `init_addon_workspace` does, plus optional `package.json` with esbuild build scripts, TypeScript config, deploy script that copies output to the `com.mojang` folder, and writes everything to disk.
 
 **Safety features:** `dry_run` parameter previews files without writing. `overwrite_existing` controls whether existing files are replaced. Path traversal is blocked. Non-Windows deploy scripts include a portability warning.
+
+### Deployment paths
+
+`mcdev_path` is **optional** on `scaffold_addon` and `distribute_addon`. When omitted, the server resolves the games data folder in this order:
+
+1. Explicit `mcdev_path` argument (always wins)
+2. `MINECRAFT_COM_MOJANG` env var (`MCDEV_PATH` accepted as alias)
+3. Platform auto-detection:
+   - Windows unpackaged: `%APPDATA%\Minecraft Bedrock\Users\Shared\games\com.mojang`
+   - Windows Store/UWP: `%LOCALAPPDATA%\Packages\Microsoft.*8wekyb3d8bbwe\LocalState\games\com.mojang`
+   - macOS: `~/Library/Application Support/minecraftpe`
+   - Linux: `~/.local/share/minecraftpe`, Flatpak `~/.var/app/com.mojang.Minecraft/data/minecraftpe`
+
+Call `resolve_minecraft_env` (or read `bedrock://env/minecraft`) instead of guessing paths. Deploy creates `development_behavior_packs/` / `development_resource_packs/` when missing. Generated `deploy.js` reads `DEPLOY_PATH` from `.env`, then `MINECRAFT_COM_MOJANG` / `MCDEV_PATH`, then the same detection chain, so `npm run deploy` works on other machines too.
 
 ### Workspace checks
 `diagnose_workspace` returns a structured inventory of an addon workspace:
@@ -200,6 +215,7 @@ The server exposes these read-only resources:
 | `bedrock://docs/module_guide` | Module selection and version guidance for addon projects |
 | `bedrock://docs/best_practices` | Performance and architecture guidance |
 | `bedrock://docs/color_codes` | Minecraft color and format codes |
+| `bedrock://env/minecraft` | Resolved Minecraft games data folder and deploy targets for this machine |
 
 ---
 

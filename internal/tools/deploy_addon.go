@@ -6,11 +6,13 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/isaac-org/Script-API-Helper-MCP/internal/mcdev"
 )
 
 type DeployAddonInput struct {
 	ProjectPath   string `json:"project_path" mcp:"required,description='Path to addon workspace root'"`
-	MCDevPath     string `json:"mcdev_path" mcp:"required,description='Path to com.mojang folder'"`
+	MCDevPath     string `json:"mcdev_path" mcp:"description='Path to com.mojang / games data folder. Optional: resolved from MINECRAFT_COM_MOJANG env or platform auto-detection when empty.'"`
 	BPSource      string `json:"bp_source" mcp:"description='BP source folder relative to project_path (auto-detected if empty)'"`
 	RPSource      string `json:"rp_source" mcp:"description='RP source folder relative to project_path (auto-detected if empty)'"`
 	ScriptsSource string `json:"scripts_source" mcp:"description='Folder whose contents are merged into the BP at scripts/ during deploy (e.g. dist). Skipped if empty or not found.'"`
@@ -20,13 +22,21 @@ type DeployAddonInput struct {
 }
 
 type DeployAddonOutput struct {
-	Operations []string `json:"operations"`
-	BPSource   string   `json:"bp_source"`
-	RPSource   string   `json:"rp_source"`
-	DryRun     bool     `json:"dry_run"`
+	Operations      []string `json:"operations"`
+	BPSource        string   `json:"bp_source"`
+	RPSource        string   `json:"rp_source"`
+	MCDevPath       string   `json:"mcdev_path"`
+	MCDevSource     string   `json:"mcdev_source,omitempty"`
+	DryRun          bool     `json:"dry_run"`
 }
 
 func deployAddon(args DeployAddonInput) (*DeployAddonOutput, error) {
+	resolved, err := mcdev.Resolve(args.MCDevPath)
+	if err != nil {
+		return nil, err
+	}
+	mcdevPath := resolved.Path
+
 	bpRel := strings.TrimSpace(args.BPSource)
 	if bpRel == "" {
 		bpRel = "behavior_pack"
@@ -50,11 +60,11 @@ func deployAddon(args DeployAddonInput) (*DeployAddonOutput, error) {
 	}
 	rpSrc, rpOK := safeSubdir(args.ProjectPath, rpRel)
 
-	bpDst := filepath.Join(args.MCDevPath, "development_behavior_packs", bpName)
+	bpDst := filepath.Join(mcdevPath, "development_behavior_packs", bpName)
 
 	ops := []string{fmt.Sprintf("copy %s -> %s", bpSrc, bpDst)}
 	if rpOK {
-		rpDst := filepath.Join(args.MCDevPath, "development_resource_packs", rpName)
+		rpDst := filepath.Join(mcdevPath, "development_resource_packs", rpName)
 		ops = append(ops, fmt.Sprintf("copy %s -> %s", rpSrc, rpDst))
 	}
 
@@ -67,18 +77,23 @@ func deployAddon(args DeployAddonInput) (*DeployAddonOutput, error) {
 
 	if args.DryRun {
 		return &DeployAddonOutput{
-			Operations: ops,
-			BPSource:   bpRel,
-			RPSource:   rpRel,
-			DryRun:     true,
+			Operations:  ops,
+			BPSource:    bpRel,
+			RPSource:    rpRel,
+			MCDevPath:   mcdevPath,
+			MCDevSource: resolved.Source,
+			DryRun:      true,
 		}, nil
 	}
 
+	if err := mcdev.EnsureDevDirs(mcdevPath); err != nil {
+		return nil, err
+	}
 	if err := copyDir(bpSrc, bpDst); err != nil {
 		return nil, err
 	}
 	if rpOK {
-		rpDst := filepath.Join(args.MCDevPath, "development_resource_packs", rpName)
+		rpDst := filepath.Join(mcdevPath, "development_resource_packs", rpName)
 		if err := copyDir(rpSrc, rpDst); err != nil {
 			return nil, err
 		}
@@ -93,10 +108,12 @@ func deployAddon(args DeployAddonInput) (*DeployAddonOutput, error) {
 	}
 
 	return &DeployAddonOutput{
-		Operations: ops,
-		BPSource:   bpRel,
-		RPSource:   rpRel,
-		DryRun:     false,
+		Operations:  ops,
+		BPSource:    bpRel,
+		RPSource:    rpRel,
+		MCDevPath:   mcdevPath,
+		MCDevSource: resolved.Source,
+		DryRun:      false,
 	}, nil
 }
 

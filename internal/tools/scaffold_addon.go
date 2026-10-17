@@ -12,6 +12,7 @@ import (
 	mcp "github.com/metoro-io/mcp-golang"
 
 	"github.com/isaac-org/Script-API-Helper-MCP/internal/manifest"
+	"github.com/isaac-org/Script-API-Helper-MCP/internal/mcdev"
 	"github.com/isaac-org/Script-API-Helper-MCP/internal/models"
 	"github.com/isaac-org/Script-API-Helper-MCP/internal/npm"
 )
@@ -27,7 +28,7 @@ type ScaffoldAddonInput struct {
 	Dependencies                   []string `json:"dependencies" mcp:"description='List of @minecraft/* modules to include (e.g., [\"@minecraft/server\", \"@minecraft/server-ui\"])'"`
 	CreateDeployScript             bool     `json:"create_deploy_script" mcp:"description='Whether to create a deploy.js script that copies build output to Minecraft com.mojang folder'"`
 	WriteFiles                     bool     `json:"write_files" mcp:"description='Whether to write the generated scaffold to disk'"`
-	MCDevPath                      string   `json:"mcdev_path" mcp:"required,description='Path to Minecraft Bedrock com.mojang folder'"`
+	MCDevPath                      string   `json:"mcdev_path" mcp:"description='Path to Minecraft Bedrock com.mojang / games data folder. Optional: resolved from MINECRAFT_COM_MOJANG env or platform auto-detection when empty; written into .env as DEPLOY_PATH.'"`
 	BPFolderName                   string   `json:"bp_folder_name" mcp:"description='Source behavior pack folder name in project (default: behavior_pack)'"`
 	RPFolderName                   string   `json:"rp_folder_name" mcp:"description='Source resource pack folder name in project (default: resource_pack)'"`
 	BPDestName                     string   `json:"bp_dest_name" mcp:"description='Destination folder name in development_behavior_packs (e.g., MyAddon or MyAddon BP)'"`
@@ -152,6 +153,9 @@ func handleScaffoldAddon(args ScaffoldAddonInput, npmClient *npm.Client) (*mcp.T
 		if runtime.GOOS != "windows" {
 			output.ValidationWarnings = append(output.ValidationWarnings, "WARNING: generated deploy.js production packaging uses PowerShell Compress-Archive and is Windows-oriented.")
 		}
+		if res, resErr := mcdev.Resolve(strings.TrimSpace(args.MCDevPath)); resErr == nil {
+			args.MCDevPath = res.Path
+		}
 	}
 
 	if args.WriteFiles {
@@ -231,7 +235,7 @@ func buildScaffoldFiles(output ScaffoldAddonOutput, args ScaffoldAddonInput) map
 }
 
 func generateEnvFile(mcDevPath string) string {
-	return "# Minecraft Bedrock development folder\nDEPLOY_PATH=" + strings.TrimSpace(mcDevPath) + "\n\n# Optional folder for npm run deploy:prod output\n# DOWNLOAD_PATH=\n"
+	return "# Minecraft Bedrock games data folder (contains development_behavior_packs).\n# Falls back to MINECRAFT_COM_MOJANG env var or platform auto-detection when empty.\nDEPLOY_PATH=" + strings.TrimSpace(mcDevPath) + "\n\n# Optional folder for npm run deploy:prod output\n# DOWNLOAD_PATH=\n"
 }
 
 func sortedPaths(files map[string]string) []string {
@@ -442,6 +446,48 @@ function readEnv(key) {
   return "";
 }
 
+function detectMcDev() {
+  const fromEnvFile = readEnv("DEPLOY_PATH");
+  if (fromEnvFile) return fromEnvFile;
+  if (process.env.MINECRAFT_COM_MOJANG) return process.env.MINECRAFT_COM_MOJANG;
+  if (process.env.MCDEV_PATH) return process.env.MCDEV_PATH;
+  if (process.platform === "win32") {
+    const fs = require("fs");
+    const os = require("os");
+    const candidates = [];
+    if (process.env.APPDATA) {
+      candidates.push(join(process.env.APPDATA, "Minecraft Bedrock", "Users", "Shared", "games", "com.mojang"));
+    }
+    // Microsoft Store / UWP install: %LOCALAPPDATA%\Packages\<publisher>_<hash>\LocalState\games\com.mojang
+    try {
+      const localApp = process.env.LOCALAPPDATA || join(os.homedir(), "AppData", "Local");
+      const pkgRoot = join(localApp, "Packages");
+      if (existsSync(pkgRoot)) {
+        for (const entry of fs.readdirSync(pkgRoot)) {
+          if (entry.startsWith("Microsoft.") && entry.endsWith("8wekyb3d8bbwe")) {
+            candidates.push(join(pkgRoot, entry, "LocalState", "games", "com.mojang"));
+          }
+        }
+      }
+    } catch { /* ignore probing errors */ }
+    for (const c of candidates) {
+      if (existsSync(c)) return c;
+    }
+    return "";
+  }
+  if (process.platform === "darwin") {
+    const os = require("os");
+    const c = join(os.homedir(), "Library", "Application Support", "minecraftpe");
+    if (existsSync(c)) return c;
+    return "";
+  }
+  const os = require("os");
+  for (const c of [join(os.homedir(), ".local", "share", "minecraftpe"), join(os.homedir(), ".var", "app", "com.mojang.Minecraft", "data", "minecraftpe")]) {
+    if (existsSync(c)) return c;
+  }
+  return "";
+}
+
 `
 	// --- build step ---
 	if needsJSBuild {
@@ -468,9 +514,9 @@ function readEnv(key) {
 	// --- dev command ---
 	script += `function dev() {
   if (!process.env.SKIP_BUILD) build();
-  const mcDev = readEnv("DEPLOY_PATH");
+  const mcDev = detectMcDev();
   if (!mcDev) {
-    console.error("DEPLOY_PATH not set in .env");
+    console.error("DEPLOY_PATH not set in .env and no Minecraft games data folder found. Set MINECRAFT_COM_MOJANG or DEPLOY_PATH in .env.");
     process.exit(1);
   }
   const bDest = join(mcDev, "development_behavior_packs", BP_DEST_NAME);
